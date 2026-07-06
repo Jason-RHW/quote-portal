@@ -1,0 +1,29 @@
+# Dependencies
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+backend/.vercel/
+frontend/.vercel/
+
+# Local environment files
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!backend/.env.example
+!frontend/.env.example
+
+# Local databases
+backend/quote_portal.db
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS/editor noise
+.DS_Store

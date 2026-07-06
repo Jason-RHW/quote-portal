@@ -1,0 +1,148 @@
+.login-page {
+  min-height: 100vh;
+  background: #0A1628;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-card {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 400px;
+  padding: 40px 36px 32px;
+}
+
+.login-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+.login-logo img {
+  height: 46px;
+  width: auto;
+}
+
+.login-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #0F172A;
+  text-align: center;
+  margin: 0 0 4px;
+}
+
+.login-sub {
+  font-size: 12px;
+  color: #64748B;
+  text-align: center;
+  margin: 0 0 24px;
+}
+
+.login-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #FFF1F2;
+  border: 0.5px solid #FCA5A5;
+  border-radius: 5px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: #BE123C;
+  margin-bottom: 14px;
+}
+
+.login-field {
+  margin-bottom: 16px;
+}
+
+.login-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 5px;
+}
+
+.login-input-wrap {
+  position: relative;
+}
+
+.login-input-wrap input {
+  width: 100%;
+  height: 40px;
+  padding: 0 40px 0 12px;
+  border: 0.5px solid #CBD5E1;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #0F172A;
+  font-family: inherit;
+  outline: none;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.login-input-wrap input:focus {
+  border-color: #93C5FD;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.login-toggle-pw {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  transition: color 0.1s;
+}
+
+.login-toggle-pw:hover { color: #475569; }
+
+.login-btn {
+  width: 100%;
+  height: 40px;
+  background: #1E40AF;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s;
+  margin-top: 4px;
+}
+
+.login-btn:hover:not(:disabled) { background: #1E3A8A; }
+.login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.login-footer-rule {
+  height: 0.5px;
+  background: #E2E8F0;
+  margin: 24px 0 16px;
+}
+
+.login-footer {
+  font-size: 11px;
+  color: #94A3B8;
+  text-align: center;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.login-copyright {
+  margin-top: 24px;
+  font-size: 11px;
+  color: #334155;
+  text-align: center;
+}
