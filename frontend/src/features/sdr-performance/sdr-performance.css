@@ -1,0 +1,191 @@
+/* ─────────────────────────────────────────────────────────────────────
+   SDR Performance page styles.
+
+   Scoping note: this app's shared.css already defines global classes like
+   .dash-section, .dash-section-title, .filter-period, and .empty-state,
+   reused across Quotes/POs/Accounts/Dashboard. Where this page wants the
+   *same* look, it just uses those classes directly (no redefinition here).
+   Where it wants something different (e.g. larger section titles), the
+   override is scoped under .sdr-performance-page so it can't change those
+   other pages. Everything else below (kpi-*, sdr-*, donut, span8-*,
+   clock-*, period-*, cal-*) is new to this feature and scoped by folder
+   convention, not by literal CSS scoping, since none of it collides with
+   existing class names.
+   ───────────────────────────────────────────────────────────────────── */
+
+.sdr-performance-page {
+  /* Chart palette — matches sdr-daily-report/chart_data.py exactly, so
+     these colors are identical to the ones in the daily email PDF. */
+  --sdr-1: #223B89;
+  --sdr-2: #B62523;
+  --sdr-3: #0F9B8E;
+  --sdr-4: #D97706;
+  --sdr-5: #6D28D9;
+  --c-connected: #223B89;
+  --c-voicemail: #D97706;
+  --c-other: #9CA3AF;
+  --c-active: #059669;
+  --c-idle: #D97706;
+  --c-off: #CBD5E1;
+}
+
+/* Page-scoped typography override — bigger section titles just on this
+   page, without changing Quotes/POs/Accounts/Dashboard. */
+.sdr-performance-page .dash-section-header {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sdr-performance-page .dash-section-title {
+  font-size: 16px; font-weight: 700; letter-spacing: -0.1px;
+}
+.sdr-performance-page .dash-section-sub { font-size: 12px; color: var(--text-muted); }
+
+/* ── Toolbar ── */
+.sdr-performance-page .report-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.sdr-performance-page .period-controls { display: flex; align-items: center; gap: 6px; }
+.sdr-performance-page .period-nav-btn { padding: 6px 10px; min-width: 32px; height: 31px; }
+.sdr-performance-page .period-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.sdr-performance-page .period-dd-wrap { position: relative; }
+.sdr-performance-page .period-label-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 190px; height: 31px;
+  background: var(--surface-card); border: 0.5px solid var(--border); border-radius: 6px;
+  color: var(--text-primary); font-size: 13px; font-weight: 500; cursor: pointer; padding: 0 10px;
+}
+.sdr-performance-page .period-label-btn:hover { background: var(--surface-subtle); }
+.sdr-performance-page .period-label-btn .caret { font-size: 9px; color: var(--text-muted); }
+
+.sdr-performance-page .period-dd-panel,
+.sdr-performance-page .period-cal-panel {
+  position: absolute; top: calc(100% + 5px); left: 0; background: #fff;
+  border: 0.5px solid var(--border); border-radius: 8px; box-shadow: 0 10px 28px rgba(10,22,40,0.14);
+  padding: 5px; z-index: 40;
+}
+.sdr-performance-page .period-dd-panel { min-width: 230px; max-height: 280px; overflow-y: auto; }
+.sdr-performance-page .period-dd-item { padding: 8px 10px; border-radius: 5px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.sdr-performance-page .period-dd-item:hover { background: var(--surface-subtle); }
+.sdr-performance-page .period-dd-item.active { background: var(--text-primary); color: #fff; font-weight: 500; }
+
+.sdr-performance-page .period-cal-panel { width: 264px; padding: 10px; }
+.sdr-performance-page .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sdr-performance-page .cal-header-label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.sdr-performance-page .cal-nav-btn {
+  width: 22px; height: 22px; border: 0.5px solid var(--border); border-radius: 4px; background: var(--surface-card);
+  color: var(--text-muted); font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.sdr-performance-page .cal-nav-btn:hover { background: var(--surface-subtle); }
+.sdr-performance-page .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.sdr-performance-page .cal-weekday { font-size: 9px; color: var(--text-placeholder); text-align: center; padding: 4px 0; text-transform: uppercase; }
+.sdr-performance-page .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 5px; color: var(--text-primary); cursor: pointer; }
+.sdr-performance-page .cal-day:hover { background: var(--surface-subtle); }
+.sdr-performance-page .cal-day.active { background: var(--text-primary); color: #fff; font-weight: 600; }
+.sdr-performance-page .cal-day.no-data { color: var(--text-placeholder); opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.sdr-performance-page .cal-day.blank { visibility: hidden; pointer-events: none; }
+.sdr-performance-page .cal-legend { font-size: 10px; color: var(--text-muted); margin-top: 8px; line-height: 1.4; }
+
+/* ── Overview: donut + KPI cards ── */
+.sdr-performance-page .overview-grid { display: grid; grid-template-columns: minmax(480px,560px) minmax(0,1fr); gap: 16px; align-items: stretch; margin-bottom: 18px; }
+.sdr-performance-page .overview-grid .kpi-grid { margin-bottom: 0; }
+.sdr-performance-page .overview-grid .dash-section { margin-bottom: 0; }
+
+.sdr-performance-page .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 12px; margin-bottom: 16px; }
+.sdr-performance-page .kpi-card { background: var(--surface-card); border: 0.5px solid var(--border); border-radius: 8px; padding: 16px 18px; }
+.sdr-performance-page .kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-weight: 600; }
+.sdr-performance-page .kpi-value { font-size: 32px; font-weight: 700; color: var(--text-primary); line-height: 1; letter-spacing: -0.3px; }
+.sdr-performance-page .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; margin-top: 9px; padding: 3px 7px; border-radius: 4px; }
+.sdr-performance-page .kpi-delta.up { background: var(--status-fulfilled-bg); color: var(--status-fulfilled-text); }
+.sdr-performance-page .kpi-delta.down { background: var(--status-stalled-bg); color: var(--status-stalled-text); }
+.sdr-performance-page .kpi-delta.flat { background: var(--surface-subtle); color: var(--text-muted); }
+
+.sdr-performance-page .team-comp { display: flex; align-items: center; gap: 24px; min-height: 140px; padding: 18px 20px; flex-wrap: nowrap; }
+.sdr-performance-page .donut-wrap { position: relative; width: 136px; height: 136px; flex-shrink: 0; }
+.sdr-performance-page .donut { width: 136px; height: 136px; border-radius: 50%; }
+.sdr-performance-page .donut::after { content: ""; position: absolute; inset: 18px; background: #fff; border-radius: 50%; }
+.sdr-performance-page .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.sdr-performance-page .donut-center .n { font-size: 32px; font-weight: 700; color: var(--text-primary); line-height: 1; letter-spacing: -0.3px; }
+.sdr-performance-page .donut-center .d { font-size: 11px; color: var(--text-muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+.sdr-performance-page .donut-center .dl { font-size: 12px; font-weight: 600; margin-top: 6px; }
+.sdr-performance-page .donut-center .dl.up { color: var(--status-fulfilled-text); }
+.sdr-performance-page .donut-center .dl.down { color: var(--status-stalled-text); }
+.sdr-performance-page .donut-center .dl.flat { color: var(--text-muted); }
+.sdr-performance-page .legend { display: flex; flex-direction: column; gap: 9px; }
+.sdr-performance-page .legend-row { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.sdr-performance-page .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.sdr-performance-page .legend-name { color: var(--text-secondary); min-width: 130px; }
+.sdr-performance-page .legend-count { font-weight: 600; color: var(--text-primary); }
+.sdr-performance-page .legend-pct { color: var(--text-muted); font-size: 11px; }
+
+/* ── SDR cards ── */
+.sdr-performance-page .section-card { background: transparent; border: 0; border-radius: 0; overflow: visible; margin-bottom: 0; }
+.sdr-performance-page .section-card .dash-section-header { padding: 8px 0 10px; border: 0; }
+
+.sdr-performance-page .sdr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,440px), 1fr)); gap: 14px; align-items: stretch; }
+.sdr-performance-page .sdr-card {
+  background: var(--surface-card); border: 0.5px solid var(--border); border-radius: 8px;
+  border-left: 3px solid var(--accent, #94A3B8); padding: 16px 18px; width: 100%; min-width: 0;
+  display: flex; flex-direction: column;
+}
+.sdr-performance-page .sdr-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.sdr-performance-page .sdr-badge { width: 20px; height: 20px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sdr-performance-page .sdr-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+
+.sdr-performance-page .sdr-top { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; }
+.sdr-performance-page .sdr-donut-block { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sdr-performance-page .sdr-donut-wrap { position: relative; width: 86px; height: 86px; flex-shrink: 0; }
+.sdr-performance-page .sdr-donut { width: 86px; height: 86px; border-radius: 50%; }
+.sdr-performance-page .sdr-donut::after { content: ""; position: absolute; inset: 12px; background: #fff; border-radius: 50%; }
+.sdr-performance-page .sdr-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.sdr-performance-page .sdr-donut-center .n { font-size: 19px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.sdr-performance-page .sdr-donut-center .d { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
+.sdr-performance-page .sdr-legend { display: flex; flex-direction: column; gap: 5px; font-size: 11px; min-width: 0; }
+.sdr-performance-page .sdr-legend-row { display: grid; grid-template-columns: 7px max-content max-content max-content; align-items: center; gap: 6px; }
+.sdr-performance-page .sdr-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sdr-performance-page .sdr-legend-label { color: var(--text-secondary); }
+.sdr-performance-page .sdr-legend-val { font-weight: 600; color: var(--text-primary); text-align: left; margin-left: 8px; }
+.sdr-performance-page .sdr-legend-delta { font-size: 9px; font-weight: 600; }
+.sdr-performance-page .sdr-legend-delta.up { color: var(--status-fulfilled-text); }
+.sdr-performance-page .sdr-legend-delta.down { color: var(--status-stalled-text); }
+.sdr-performance-page .sdr-legend-delta.flat { color: var(--text-muted); }
+.sdr-performance-page .sdr-time-block { min-width: 0; }
+
+.sdr-performance-page .sdr-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 0.5px solid var(--border-subtle); }
+.sdr-performance-page .stat-box { background: var(--surface-subtle); border-radius: 8px; padding: 14px 8px; text-align: center; }
+.sdr-performance-page .stat-box .v { font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.sdr-performance-page .stat-box .l { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 6px; }
+.sdr-performance-page .stat-box .dl { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; margin-top: 8px; padding: 3px 8px; border-radius: 5px; }
+.sdr-performance-page .stat-box .dl.up { background: var(--status-fulfilled-bg); color: var(--status-fulfilled-text); }
+.sdr-performance-page .stat-box .dl.down { background: var(--status-stalled-bg); color: var(--status-stalled-text); }
+.sdr-performance-page .stat-box .dl.flat { background: var(--surface-subtle); color: var(--text-muted); }
+
+/* ── Clock dial (daily) ── */
+.sdr-performance-page .clock-row { display: flex; align-items: center; gap: 14px; }
+.sdr-performance-page .clock-dial { flex-shrink: 0; }
+.sdr-performance-page .clock-dial-empty { width: 120px; height: 120px; }
+.sdr-performance-page .clock-time { font-size: 10px; color: var(--text-muted); margin-bottom: 6px; }
+.sdr-performance-page .clock-legend { display: flex; flex-direction: column; gap: 5px; }
+.sdr-performance-page .clock-legend-row { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.sdr-performance-page .clock-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.sdr-performance-page .clock-legend-val { font-weight: 600; color: var(--text-primary); }
+
+/* ── 8h span bar (weekly/monthly) ── */
+.sdr-performance-page .span-cap { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+.sdr-performance-page .span8-scale { position: relative; height: 22px; border-radius: 5px; background: var(--surface-subtle); border: 0.5px solid var(--border); overflow: hidden; }
+.sdr-performance-page .span8-seg { position: absolute; top: 0; bottom: 0; }
+.sdr-performance-page .span8-ticks { display: flex; justify-content: space-between; margin-top: 5px; font-size: 9px; color: var(--text-placeholder); }
+.sdr-performance-page .span8-legend { display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.sdr-performance-page .span8-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
+.sdr-performance-page .span8-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.sdr-performance-page .span8-legend-val { font-weight: 600; color: var(--text-primary); margin-left: 2px; }
+
+@media (max-width: 1280px) {
+  .sdr-performance-page .overview-grid { grid-template-columns: 1fr; }
+  .sdr-performance-page .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); }
+  .sdr-performance-page .report-toolbar { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 980px) {
+  .sdr-performance-page .sdr-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%,320px), 1fr)); }
+  .sdr-performance-page .sdr-top { grid-template-columns: 1fr; gap: 16px; }
+  .sdr-performance-page .sdr-stats { grid-template-columns: repeat(3,1fr); }
+}
+@media (max-width: 420px) {
+  .sdr-performance-page .sdr-stats { grid-template-columns: 1fr; }
+  .sdr-performance-page .team-comp { flex-wrap: wrap; }
+}
