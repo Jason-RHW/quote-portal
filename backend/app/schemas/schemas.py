@@ -186,6 +186,8 @@ class SdrMixOut(BaseModel):
     voicemail: float
     other: float
     connectedDelta: Optional[DeltaOut] = None
+    voicemailDelta: Optional[DeltaOut] = None
+    otherDelta: Optional[DeltaOut] = None
 
 
 class SdrClockOut(BaseModel):

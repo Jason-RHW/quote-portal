@@ -10,6 +10,7 @@ tagging changes, or an SDR joins/leaves, both places need updating.
 These values were extracted directly from the real sdr_config.py during
 this integration, not guessed or left as placeholders.
 """
+from datetime import date
 
 # Raw Aircall user display name -> canonical SDR name. Must match
 # frontend/src/config/sdrs.js (or the sdrs table, once that migration
@@ -32,5 +33,12 @@ CONNECTED_TAGS = {
 }
 
 # Departed SDRs — calls attributed to them get rerouted to an "Unassigned"
-# bucket instead of silently counting toward someone no longer on the team.
-TERMINATED_SDRS = {"Lhoreto Bamiano", "Stephanie Ong"}
+# bucket instead of silently counting toward someone no longer on the
+# team. Date-aware: a call BEFORE this date attributes normally (they
+# were genuinely still working here), a call ON/AFTER it reroutes to
+# Unassigned. This matters for historical backfills specifically — a
+# blanket name ban would have hidden real activity from before they left.
+TERMINATED_SDRS = {
+    "Lhoreto Bamiano": date(2026, 6, 22),
+    "Stephanie Ong": date(2026, 6, 22),
+}

@@ -153,6 +153,24 @@ def get_available_periods(db: Session):
 
 
 # ── Daily ────────────────────────────────────────────────────────────
+def _previous_working_date(db: Session, before: date) -> Optional[date]:
+    """The most recent date strictly before `before` that actually has a
+    report — not just literal yesterday. A day with no DailySummary row
+    means the pipeline had nothing to report (weekend, holiday, an outage),
+    and comparing today's numbers against an empty day always produces a
+    meaningless "+infinite%" or misleading swing. Used as the single
+    anchor date for every daily delta below, so calls/connect/convert/
+    samples/quotes all compare against the same real prior day instead of
+    each silently picking a different one."""
+    row = (
+        db.query(DailySummary.report_date)
+        .filter(DailySummary.report_date < before)
+        .order_by(DailySummary.report_date.desc())
+        .first()
+    )
+    return row[0] if row else None
+
+
 def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     d = date.fromisoformat(date_str)
     summary = db.query(DailySummary).filter(DailySummary.report_date == d).first()
@@ -166,17 +184,21 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
         .all()
     )
 
+    prev_date = _previous_working_date(db, d)
+
     quotes_today, quotes_total_today = _quotes_by_sdr(db, d, d)
-    quotes_prev, quotes_total_prev = _quotes_by_sdr(db, d - timedelta(days=1), d - timedelta(days=1))
+    quotes_prev, quotes_total_prev = _quotes_by_sdr(db, prev_date, prev_date) if prev_date else ({}, 0)
     samples_today, samples_total_today = _samples_by_sdr(db, d, d)
-    samples_prev, samples_total_prev = _samples_by_sdr(db, d - timedelta(days=1), d - timedelta(days=1))
+    samples_prev, samples_total_prev = _samples_by_sdr(db, prev_date, prev_date) if prev_date else ({}, 0)
 
     team_deltas = dict(summary.deltas or {})
     team_deltas["quotes"] = _delta(quotes_total_today, quotes_total_prev) or {"dir": "flat", "pct": 0}
     team_deltas["samples"] = _delta(samples_total_today, samples_total_prev) or {"dir": "flat", "pct": 0}
 
     team_convert_today = _convert_pct(samples_total_today, summary.calls)
-    prev_summary = db.query(DailySummary).filter(DailySummary.report_date == d - timedelta(days=1)).first()
+    prev_summary = (
+        db.query(DailySummary).filter(DailySummary.report_date == prev_date).first() if prev_date else None
+    )
     team_convert_prev = _convert_pct(samples_total_prev, prev_summary.calls) if prev_summary else None
     team_deltas["convert"] = _delta_pp(team_convert_today, team_convert_prev) or {"dir": "flat", "pct": 0}
 
@@ -188,9 +210,11 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
         smp_today = samples_today.get(s.sdr_name, 0)
         smp_prev = samples_prev.get(s.sdr_name, 0)
         convert_today = _convert_pct(smp_today, s.calls)
-        prev_stat = db.query(SdrDailyStat).filter(
-            SdrDailyStat.report_date == d - timedelta(days=1), SdrDailyStat.sdr_name == s.sdr_name
-        ).first()
+        prev_stat = None
+        if prev_date:
+            prev_stat = db.query(SdrDailyStat).filter(
+                SdrDailyStat.report_date == prev_date, SdrDailyStat.sdr_name == s.sdr_name
+            ).first()
         convert_prev = _convert_pct(smp_prev, prev_stat.calls) if prev_stat else None
         sdrs.append({
             "name": s.sdr_name,
@@ -198,6 +222,8 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
             "mix": {
                 "connected": s.connected_pct, "voicemail": s.voicemail_pct, "other": s.other_pct,
                 "connectedDelta": sdr_deltas.get("connected"),
+                "voicemailDelta": sdr_deltas.get("voicemail"),
+                "otherDelta": sdr_deltas.get("other"),
             },
             "samples": {"v": smp_today, "delta": _delta(smp_today, smp_prev)},
             "convert": {"v": convert_today, "delta": _delta_pp(convert_today, convert_prev)},

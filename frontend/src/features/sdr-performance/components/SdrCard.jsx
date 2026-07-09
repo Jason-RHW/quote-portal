@@ -9,6 +9,15 @@ function DeltaBox({ delta }) {
   );
 }
 
+function MixDelta({ delta }) {
+  if (!delta) return null;
+  return (
+    <span className={`sdr-legend-delta ${delta.dir}`}>
+      {delta.dir === "flat" ? "—" : `${delta.dir === "up" ? "▲" : "▼"}${delta.pct}%`}
+    </span>
+  );
+}
+
 export default function SdrCard({ sdr, index, granularity }) {
   const accent = ACCENTS[index % ACCENTS.length];
   const { mix } = sdr;
@@ -37,21 +46,19 @@ export default function SdrCard({ sdr, index, granularity }) {
               <span className="sdr-legend-dot" style={{ background: "var(--c-connected)" }} />
               <span className="sdr-legend-label">Connected</span>
               <span className="sdr-legend-val">{mix.connected}%</span>
-              {mix.connectedDelta && (
-                <span className={`sdr-legend-delta ${mix.connectedDelta.dir}`}>
-                  {mix.connectedDelta.dir === "flat" ? "—" : `${mix.connectedDelta.dir === "up" ? "▲" : "▼"}${mix.connectedDelta.pct}%`}
-                </span>
-              )}
+              <MixDelta delta={mix.connectedDelta} />
             </div>
             <div className="sdr-legend-row">
               <span className="sdr-legend-dot" style={{ background: "var(--c-voicemail)" }} />
               <span className="sdr-legend-label">Voicemail</span>
               <span className="sdr-legend-val">{mix.voicemail}%</span>
+              <MixDelta delta={mix.voicemailDelta} />
             </div>
             <div className="sdr-legend-row">
               <span className="sdr-legend-dot" style={{ background: "var(--c-other)" }} />
               <span className="sdr-legend-label">Other</span>
               <span className="sdr-legend-val">{mix.other}%</span>
+              <MixDelta delta={mix.otherDelta} />
             </div>
           </div>
         </div>

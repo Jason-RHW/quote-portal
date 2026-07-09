@@ -63,6 +63,21 @@ def _delta_pp(curr: float, prev: Optional[float]) -> Optional[dict]:
     return {"dir": "up" if diff > 0 else "down", "pct": abs(diff)}
 
 
+def _previous_working_date(db: Session, before: date) -> Optional[date]:
+    """The most recent date strictly before `before` that actually has a
+    written report — not just literal yesterday, and not just "skip
+    Sat/Sun" (which misses holidays or any other gap). Same definition
+    used in sdr_performance_service.py's daily read path, so the two
+    files never disagree about what "previous working day" means."""
+    row = (
+        db.query(DailySummary.report_date)
+        .filter(DailySummary.report_date < before)
+        .order_by(DailySummary.report_date.desc())
+        .first()
+    )
+    return row[0] if row else None
+
+
 def ingest_day(db: Session, target_date: date) -> dict:
     """Fetch, compute, and upsert one day's Aircall KPIs. Idempotent —
     running it twice for the same date overwrites, not duplicates
@@ -76,10 +91,12 @@ def ingest_day(db: Session, target_date: date) -> dict:
     real_sdrs = {name: k for name, k in kpis_by_sdr.items() if not name.startswith("Unassigned")}
     unassigned_buckets = [n for n in kpis_by_sdr if n.startswith("Unassigned")]
 
-    prev_date = target_date - timedelta(days=1)
-    prev_summary = db.query(DailySummary).filter(DailySummary.report_date == prev_date).first()
+    prev_date = _previous_working_date(db, target_date)
+    prev_summary = db.query(DailySummary).filter(DailySummary.report_date == prev_date).first() if prev_date else None
     prev_stats = {
-        s.sdr_name: s for s in db.query(SdrDailyStat).filter(SdrDailyStat.report_date == prev_date).all()
+        s.sdr_name: s for s in (
+            db.query(SdrDailyStat).filter(SdrDailyStat.report_date == prev_date).all() if prev_date else []
+        )
     }
 
     team_calls = sum(k["total_calls"] for k in real_sdrs.values())
@@ -115,8 +132,15 @@ def ingest_day(db: Session, target_date: date) -> dict:
         other_pct = round(k["call_types"]["other"] / total * 100, 1) if total else 0.0
 
         prev_stat = prev_stats.get(name)
-        connected_delta = _delta_pp(connected_pct, prev_stat.connected_pct if prev_stat else None)
-        sdr_deltas = {"connected": connected_delta} if connected_delta else {}
+        sdr_deltas = {}
+        for key, curr, prev in [
+            ("connected", connected_pct, prev_stat.connected_pct if prev_stat else None),
+            ("voicemail", voicemail_pct, prev_stat.voicemail_pct if prev_stat else None),
+            ("other", other_pct, prev_stat.other_pct if prev_stat else None),
+        ]:
+            d = _delta_pp(curr, prev)
+            if d:
+                sdr_deltas[key] = d
 
         row = db.query(SdrDailyStat).filter(
             SdrDailyStat.report_date == target_date, SdrDailyStat.sdr_name == name
