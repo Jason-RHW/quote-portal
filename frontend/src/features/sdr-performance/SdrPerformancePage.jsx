@@ -10,7 +10,7 @@ const KPI_DEFS = [
   { key: "connect",   label: "Avg Connect",  fmt: (v) => `${v}%` },
   { key: "convert",   label: "Avg Convert",  fmt: (v) => `${v}%` },
   { key: "samples",   label: "Samples Sent", fmt: (v) => v },
-  { key: "activeHrs", label: "Active Hrs",   fmt: (v) => v },
+  { key: "activeHrs", label: "Avg Active Hrs", fmt: (v) => v },
 ];
 
 function fetchReport(granularity, key) {
