@@ -57,4 +57,10 @@ export const api = {
   dashboard: {
     summary: () => request("/dashboard/summary"),
   },
+  sdrPerformance: {
+    periods: ()          => request("/sdr-performance/periods"),
+    daily:   (dateStr)   => request(`/sdr-performance/daily/${dateStr}`),
+    weekly:  (weekKey)   => request(`/sdr-performance/weekly/${weekKey}`),
+    monthly: (monthKey)  => request(`/sdr-performance/monthly/${monthKey}`),
+  },
 };

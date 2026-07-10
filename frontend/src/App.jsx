@@ -5,6 +5,7 @@ import QuotesPage from "./features/quotes/QuotesPage";
 import POsPage from "./features/pos/POsPage";
 import AccountsPage from "./features/accounts/AccountsPage";
 import DashboardPage from "./pages/DashboardPage";
+import SdrPerformancePage from "./features/sdr-performance/SdrPerformancePage";
 import "./App.css";
 
 const NAV = [
@@ -12,6 +13,7 @@ const NAV = [
   { key: "pos",       label: "Purchase orders",   icon: <ReceiptIcon /> },
   { key: "accounts",  label: "Accounts",           icon: <BuildingIcon /> },
   { key: "dashboard", label: "Dashboard",          icon: <ChartIcon /> },
+  { key: "sdr-performance", label: "SDR performance", icon: <PulseIcon /> },
 ];
 
 export default function App() {
@@ -43,6 +45,9 @@ export default function App() {
           <button className={`sidebar-item ${tab==="dashboard"?"active":""}`} onClick={() => setTab("dashboard")}>
             <ChartIcon />Dashboard
           </button>
+          <button className={`sidebar-item ${tab==="sdr-performance"?"active":""}`} onClick={() => setTab("sdr-performance")}>
+            <PulseIcon />SDR performance
+          </button>
         </nav>
 
         <main className="app-main">
@@ -50,6 +55,7 @@ export default function App() {
           {tab === "pos"       && <POsPage />}
           {tab === "accounts"  && <AccountsPage />}
           {tab === "dashboard" && <DashboardPage />}
+          {tab === "sdr-performance" && <SdrPerformancePage />}
         </main>
       </div>
     </div>
@@ -67,4 +73,7 @@ function BuildingIcon() {
 }
 function ChartIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
+}
+function PulseIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
 }
