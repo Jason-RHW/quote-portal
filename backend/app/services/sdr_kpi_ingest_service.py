@@ -102,7 +102,14 @@ def ingest_day(db: Session, target_date: date) -> dict:
     team_calls = sum(k["total_calls"] for k in real_sdrs.values())
     team_connected = sum(k["call_types"]["connected"] for k in real_sdrs.values())
     team_connect_pct = round(team_connected / team_calls * 100, 1) if team_calls else 0.0
-    team_active_hrs = round(sum(k["active_hrs"] for k in real_sdrs.values()), 2)
+    # Average per SDR, not a team-wide sum — a sum mechanically grows with
+    # headcount (3 SDRs at the same individual pace as 2 would always show
+    # a bigger number) without anyone actually working differently. This
+    # also makes it consistent with team_connect_pct/convert above, which
+    # were always per-SDR-style rates, not raw totals.
+    team_active_hrs = round(
+        sum(k["active_hrs"] for k in real_sdrs.values()) / len(real_sdrs), 2
+    ) if real_sdrs else 0.0
 
     team_deltas = {}
     for key, curr, prev in [
