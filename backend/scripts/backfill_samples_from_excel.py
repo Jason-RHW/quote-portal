@@ -109,6 +109,22 @@ def as_date(value: Any) -> Optional[date]:
     return None
 
 
+def as_datetime(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    text = clean(value)
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            pass
+    return None
+
+
 def as_int_text(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -231,7 +247,8 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
         return None
 
     contact_email = clean(row.get(COLS["contact_email"]))
-    requested_date = as_date(row.get(COLS["form_submitted_at"])) or date.today()
+    submitted_at = as_datetime(row.get(COLS["form_submitted_at"]))
+    requested_date = submitted_at.date() if submitted_at else date.today()
     if already_exists(db, contact_email, business_name, requested_date):
         return None
 
@@ -267,6 +284,8 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
         state=clean(row.get(COLS["state"])),
         zip_code=as_int_text(row.get(COLS["zip_code"])),
         requested_date=requested_date,
+        created_at=submitted_at or datetime.combine(requested_date, datetime.min.time()),
+        updated_at=submitted_at or datetime.combine(requested_date, datetime.min.time()),
         status=status,
         tracking_number=tracking_number,
         sent_date=sent_date,
