@@ -283,7 +283,7 @@ def add_contact_to_list(list_id: str, contact_id: str) -> bool:
 
 
 def add_contact_to_delivered_list(contact_id: str, delivered_date: date) -> bool:
-    list_name = f"Sample Delivered Contacts {delivered_date.isoformat()}"
+    list_name = f"Sample Delivered Contacts {date.today().isoformat()}"
     list_id = get_or_create_static_contact_list(list_name)
     if not list_id:
         raise HubSpotSyncError(f"Could not create or find HubSpot list: {list_name}")

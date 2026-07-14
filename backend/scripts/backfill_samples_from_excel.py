@@ -16,6 +16,12 @@ Optional API tests:
 
 The script is idempotent: it skips rows already present by
 (contact_email, business_name, requested_date).
+
+For historical HubSpot state:
+- "Hubspot Note Processed" = tracking note was already synced and lifecycle
+  moved to Sample Sent, so hubspot_sent_synced=True.
+- "HubSpot Deliver Note Processed" = delivery note was already synced and
+  lifecycle moved to Sample Delivered, so hubspot_delivered_synced=True.
 """
 import argparse
 import sys
@@ -28,7 +34,7 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, is_sqlite
 from app.models.db_models import (
     AddressVerificationStatus,
     Brand,
@@ -62,10 +68,13 @@ COLS = {
     "sample_sent": "Sample Sent",
     "status": "Status",
     "tracking_number": "Tracking ID",
+    "delivery_status": "Delivered Date/Delivery Status",
     "note": "Note",
+    "hubspot_note_processed": "Hubspot Note Processed",
     "sales_owner": "Sales Owner",
     "form_submitted_at": "Form Submiited At",
     "delivered_date": "Delivered Date",
+    "hubspot_deliver_note_processed": "HubSpot Deliver Note Processed",
 }
 
 SDR_ALIASES = {
@@ -112,14 +121,33 @@ def norm(value: str) -> str:
     return " ".join(value.lower().split())
 
 
-def status_from_excel(value: Any, tracking_number: Optional[str], delivered_date: Optional[date]) -> SampleRequestStatus:
+def is_processed(value: Any) -> bool:
+    text = norm(clean(value) or "")
+    if not text:
+        return False
+    if text in {"0", "false", "no", "n", "not processed", "unprocessed"}:
+        return False
+    return "processed" in text or text in {"1", "true", "yes", "y", "done", "complete", "completed"}
+
+
+def status_from_excel(
+    value: Any,
+    tracking_number: Optional[str],
+    delivered_date: Optional[date],
+    delivery_status: Any = None,
+    hubspot_sent_synced: bool = False,
+    hubspot_delivered_synced: bool = False,
+) -> SampleRequestStatus:
     text = (clean(value) or "").lower()
-    if delivered_date or "deliver" in text:
+    delivery_text = (clean(delivery_status) or "").lower()
+    if delivered_date or hubspot_delivered_synced or "deliver" in text or "deliver" in delivery_text:
         return SampleRequestStatus.delivered
-    if tracking_number or "sent" in text:
+    if tracking_number or hubspot_sent_synced or "sent" in text:
         return SampleRequestStatus.sent
     if "hold" in text:
         return SampleRequestStatus.on_hold
+    if "reject" in text or "cancel" in text:
+        return SampleRequestStatus.rejected
     return SampleRequestStatus.requested
 
 
@@ -208,9 +236,22 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
         return None
 
     tracking_number = as_int_text(row.get(COLS["tracking_number"]))
-    delivered_date = as_date(row.get(COLS["delivered_date"]))
-    status = status_from_excel(row.get(COLS["status"]), tracking_number, delivered_date)
-    sent_date = requested_date if status in {SampleRequestStatus.sent, SampleRequestStatus.delivered} else None
+    delivered_date = as_date(row.get(COLS["delivered_date"])) or as_date(row.get(COLS["delivery_status"]))
+    hubspot_sent_synced = is_processed(row.get(COLS["hubspot_note_processed"]))
+    hubspot_delivered_synced = is_processed(row.get(COLS["hubspot_deliver_note_processed"]))
+    if hubspot_delivered_synced:
+        hubspot_sent_synced = True
+    status = status_from_excel(
+        row.get(COLS["status"]),
+        tracking_number,
+        delivered_date,
+        row.get(COLS["delivery_status"]),
+        hubspot_sent_synced,
+        hubspot_delivered_synced,
+    )
+    sent_date = as_date(row.get(COLS["sample_sent"])) or (
+        requested_date if status in {SampleRequestStatus.sent, SampleRequestStatus.delivered} else None
+    )
     product_sent = clean(row.get(COLS["product_sent"])) or clean(row.get(COLS["sample_sent"]))
     brand_ids = brand_ids_from_product(db, product_sent)
 
@@ -233,6 +274,8 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
         assignment_note=product_sent,
         custom_fields=custom_fields_from(row),
         address_verification_status=AddressVerificationStatus.unverified,
+        hubspot_sent_synced=hubspot_sent_synced,
+        hubspot_delivered_synced=hubspot_delivered_synced,
     )
     db.add(req)
     db.flush()
@@ -244,9 +287,21 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
         from_status=None,
         to_status=status.value,
         changed_by="Excel backfill",
-        note=f"Imported from Sample Distribution Excel. Product Sent: {product_sent or '-'}",
+        note=(
+            f"Imported from Sample Distribution Excel. Product Sent: {product_sent or '-'}; "
+            f"HubSpot sent synced: {'yes' if hubspot_sent_synced else 'no'}; "
+            f"HubSpot delivered synced: {'yes' if hubspot_delivered_synced else 'no'}"
+        ),
     ))
     return req
+
+
+def hubspot_sync_needed(req: SampleRequest) -> bool:
+    if req.status == SampleRequestStatus.sent:
+        return bool(req.tracking_number and not req.hubspot_sent_synced)
+    if req.status == SampleRequestStatus.delivered:
+        return not req.hubspot_delivered_synced
+    return False
 
 
 def main():
@@ -257,9 +312,11 @@ def main():
     parser.add_argument("--verify-addresses", action="store_true", help="Run OpenAI address verification on imported rows.")
     parser.add_argument("--sync-hubspot", action="store_true", help="Run HubSpot sync on imported sent/delivered rows with tracking.")
     parser.add_argument("--no-create-missing-sdrs", action="store_true", help="Do not create historical SDR names if missing.")
+    parser.add_argument("--create-tables", action="store_true", help="Create missing tables first. Defaults to on only for local SQLite.")
     args = parser.parse_args()
 
-    Base.metadata.create_all(bind=engine)
+    if is_sqlite or args.create_tables:
+        Base.metadata.create_all(bind=engine)
     rows = load_rows(args.xlsx_path)
     db = SessionLocal()
     imported: list[SampleRequest] = []
@@ -290,7 +347,7 @@ def main():
         if args.sync_hubspot:
             eligible_ids = [
                 req.id for req in imported
-                if req.status in {SampleRequestStatus.sent, SampleRequestStatus.delivered} and req.tracking_number
+                if hubspot_sync_needed(req)
             ]
             print(f"Running HubSpot sync for {len(eligible_ids)} eligible records...")
             synced = sample_service.batch_hubspot_sync(db, eligible_ids)

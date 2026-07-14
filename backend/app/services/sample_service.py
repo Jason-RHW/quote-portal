@@ -316,7 +316,10 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
         if req.status not in (SampleRequestStatus.sent, SampleRequestStatus.delivered):
             skipped += 1
             continue
-        if not req.tracking_number:
+        if req.status == SampleRequestStatus.sent and not req.tracking_number:
+            skipped += 1
+            continue
+        if req.status == SampleRequestStatus.delivered and not req.delivered_date:
             skipped += 1
             continue
         product_sent = _product_sent_for(db, req)
@@ -339,7 +342,6 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
         if req.status == SampleRequestStatus.sent:
             req.hubspot_sent_synced = True
         elif req.status == SampleRequestStatus.delivered:
-            req.hubspot_sent_synced = True
             req.hubspot_delivered_synced = True
         synced += 1
     db.commit()
