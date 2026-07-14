@@ -6,9 +6,9 @@ Use after setting DATABASE_URL to Supabase:
     python scripts/sync_sample_created_at_to_requested_date.py --dry-run
     python scripts/sync_sample_created_at_to_requested_date.py
 
-It aligns created_at/updated_at to requested_date for rows imported from the
-historical setup. By default it updates all existing sample_requests; future
-request-form submissions are not affected.
+It aligns requested_date to created_at for rows imported from the historical
+setup. By default it updates all existing sample_requests; future request-form
+submissions are not affected.
 """
 import argparse
 import sys
@@ -26,8 +26,8 @@ POSTGRES_PREVIEW_SQL = "SELECT COUNT(*) FROM sample_requests"
 POSTGRES_UPDATE_SQL = """
 UPDATE sample_requests
 SET
-    created_at = requested_date::timestamp AT TIME ZONE 'UTC',
-    updated_at = requested_date::timestamp AT TIME ZONE 'UTC'
+    requested_date = created_at::date
+WHERE created_at IS NOT NULL
 """
 
 POSTGRES_EXCEL_PREVIEW_SQL = """
@@ -41,13 +41,17 @@ WHERE EXISTS (
 )
 """
 
-POSTGRES_EXCEL_UPDATE_SQL = POSTGRES_UPDATE_SQL + """
+POSTGRES_EXCEL_UPDATE_SQL = """
+UPDATE sample_requests
+SET
+    requested_date = created_at::date
 WHERE EXISTS (
     SELECT 1
     FROM sample_request_events sre
     WHERE sre.sample_request_id = sample_requests.id
       AND sre.changed_by = 'Excel backfill'
 )
+AND created_at IS NOT NULL
 """
 
 SQLITE_PREVIEW_SQL = "SELECT COUNT(*) FROM sample_requests"
@@ -55,8 +59,8 @@ SQLITE_PREVIEW_SQL = "SELECT COUNT(*) FROM sample_requests"
 SQLITE_UPDATE_SQL = """
 UPDATE sample_requests
 SET
-    created_at = datetime(requested_date),
-    updated_at = datetime(requested_date)
+    requested_date = date(created_at)
+WHERE created_at IS NOT NULL
 """
 
 SQLITE_EXCEL_PREVIEW_SQL = """
@@ -73,13 +77,13 @@ WHERE EXISTS (
 SQLITE_EXCEL_UPDATE_SQL = """
 UPDATE sample_requests
 SET
-    created_at = datetime(requested_date),
-    updated_at = datetime(requested_date)
+    requested_date = date(created_at)
 WHERE id IN (
     SELECT sample_request_id
     FROM sample_request_events
     WHERE changed_by = 'Excel backfill'
 )
+AND created_at IS NOT NULL
 """
 
 
@@ -100,12 +104,12 @@ def main():
     try:
         count = db.execute(text(preview_sql)).scalar() or 0
         if args.dry_run:
-            print(f"DRY RUN: would sync created_at/updated_at for {count} historical sample records.")
+            print(f"DRY RUN: would sync requested_date from created_at for {count} historical sample records.")
             return
 
         result = db.execute(text(update_sql))
         db.commit()
-        print(f"Synced created_at/updated_at for {result.rowcount if result.rowcount is not None else count} historical sample records.")
+        print(f"Synced requested_date from created_at for {result.rowcount if result.rowcount is not None else count} historical sample records.")
     finally:
         db.close()
 

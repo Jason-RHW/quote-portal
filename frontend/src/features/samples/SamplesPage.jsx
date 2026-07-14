@@ -80,6 +80,10 @@ function daysAgo(dateStr) {
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
+function recordDate(req) {
+  return req.created_at?.slice(0, 10) || req.requested_date;
+}
+
 function isoLocal(date) {
   return [
     date.getFullYear(),
@@ -171,9 +175,9 @@ export default function SamplesPage() {
         (r.address_verification_note || r.address_verification_confidence != null || r.address_verification_source_url)
       );
     }
-    if (dateFilter) list = list.filter(r => r.requested_date === dateFilter);
-    if (dateRange.from) list = list.filter(r => r.requested_date >= dateRange.from);
-    if (dateRange.to) list = list.filter(r => r.requested_date <= dateRange.to);
+    if (dateFilter) list = list.filter(r => recordDate(r) === dateFilter);
+    if (dateRange.from) list = list.filter(r => recordDate(r) >= dateRange.from);
+    if (dateRange.to) list = list.filter(r => recordDate(r) <= dateRange.to);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(r =>
@@ -192,7 +196,7 @@ export default function SamplesPage() {
     return visible.slice(start, start + PAGE_SIZE);
   }, [visible, currentPage]);
 
-  const dataDates = useMemo(() => [...new Set(requests.map(r => r.requested_date))], [requests]);
+  const dataDates = useMemo(() => [...new Set(requests.map(recordDate))], [requests]);
   const recordedSdrOptions = useMemo(() => {
     return [...new Set(requests.map(r => (sdrsById[r.sdr_id]?.full_name || "").trim()).filter(Boolean))].sort();
   }, [requests, sdrsById]);
@@ -215,8 +219,8 @@ export default function SamplesPage() {
   ];
 
   const totalSamples = allRequests.length;
-  const samplesThisMonth = allRequests.filter(r => r.requested_date >= monthStartIso()).length;
-  const samplesThisWeek = allRequests.filter(r => r.requested_date >= weekStartIso()).length;
+  const samplesThisMonth = allRequests.filter(r => recordDate(r) >= monthStartIso()).length;
+  const samplesThisWeek = allRequests.filter(r => recordDate(r) >= weekStartIso()).length;
 
   function toggleSelect(id) {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -429,7 +433,7 @@ export default function SamplesPage() {
               </thead>
               <tbody>
                 {pagedVisible.map(r => {
-                  const age = daysAgo(r.requested_date);
+                  const age = daysAgo(recordDate(r));
                   const stale = (r.status === "requested" || r.status === "on_hold") && age >= 3;
                   return (
                     <tr key={r.id} className={`${stale ? "row-stale" : ""} ${selectedIds.includes(r.id) ? "selected" : ""}`} onClick={() => setOpenId(r.id)}>
@@ -445,7 +449,7 @@ export default function SamplesPage() {
                       <td><HubspotBadge req={r} /></td>
                       <td className="tracking">{r.tracking_number || "—"}</td>
                       <td>
-                        {new Date(r.requested_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {new Date(recordDate(r) + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         <div className={`age-tag ${stale ? "stale" : ""}`}>{age === 0 ? "today" : `${age}d ago`}</div>
                       </td>
                     </tr>

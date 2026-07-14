@@ -27,6 +27,10 @@ function parseApiError(e) {
   }
 }
 
+function recordDate(record) {
+  return record.created_at?.slice(0, 10) || record.requested_date;
+}
+
 function BrandSummary({ record, brandsById }) {
   const brandIds = record.brand_ids || [];
   if (!brandIds?.length) {
@@ -100,13 +104,13 @@ export default function SampleRecordsManagerModal({ brands, sdrsById, onClose, o
 
   const visible = useMemo(() => {
     let list = records;
-    if (dateFilter) list = list.filter(r => r.requested_date === dateFilter);
-    if (dateRange.from) list = list.filter(r => r.requested_date >= dateRange.from);
-    if (dateRange.to) list = list.filter(r => r.requested_date <= dateRange.to);
+    if (dateFilter) list = list.filter(r => recordDate(r) === dateFilter);
+    if (dateRange.from) list = list.filter(r => recordDate(r) >= dateRange.from);
+    if (dateRange.to) list = list.filter(r => recordDate(r) <= dateRange.to);
     return list;
   }, [records, dateFilter, dateRange.from, dateRange.to]);
 
-  const dataDates = useMemo(() => [...new Set(records.map(r => r.requested_date))], [records]);
+  const dataDates = useMemo(() => [...new Set(records.map(recordDate))], [records]);
 
   function patchRecord(updated) {
     setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));

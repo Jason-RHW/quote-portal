@@ -67,7 +67,7 @@ def list_sample_requests(
         ]
         query = query.filter(SampleRequest.id.in_(matching_ids))
 
-    results = query.order_by(SampleRequest.requested_date.desc(), SampleRequest.created_at.desc()).all()
+    results = query.order_by(SampleRequest.created_at.desc(), SampleRequest.requested_date.desc()).all()
     return _attach_brand_ids(db, results)
 
 

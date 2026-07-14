@@ -13,11 +13,9 @@ Data sources:
    reason — it's a business record with a status, not Aircall call-log
    data, so it doesn't belong in the pipeline at all.
 
-   Samples are attributed by `requested_date` (when the SDR filled out the
-   request, including historical backfill date) rather than `sent_date`
-   (when it shipped) — sent_date depends on warehouse/shipping timing the
-   SDR doesn't control, and the KPI is meant to measure the SDR's work,
-   not fulfillment speed.
+   Samples are attributed by `created_at` (when the request record was
+   created) rather than fulfillment dates. For historical Supabase rows,
+   created_at is the source of truth for the real submitted date.
 
 Weekly/monthly are NOT separate tables. They're computed here by
 aggregating the daily rows over a date range, so there's only ever one
@@ -32,7 +30,7 @@ needs to be precise to the decimal for a compliance/reporting reason —
 switching sdr_daily_stats to store counts instead of percentages would
 remove the approximation entirely.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Optional, List, Dict, Tuple
 from collections import defaultdict
 
@@ -103,15 +101,16 @@ def _quotes_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, int],
 
 
 def _samples_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, int], int]:
-    """Sample requests attributed by requested_date, for [start, end]
-    inclusive. That keeps historical Excel imports and live SDR form
-    submissions on the same timeline. Same live-query pattern as
-    _quotes_by_sdr — see module docstring for why samples doesn't use the
-    daily pipeline at all."""
+    """Sample requests attributed by created_at date, for [start, end]
+    inclusive. Same live-query pattern as _quotes_by_sdr — see module
+    docstring for why samples doesn't use the daily pipeline at all."""
     id_to_name = {s.id: s.full_name for s in db.query(Sdr).all()}
+    start_dt = datetime.combine(start, time.min)
+    end_dt = datetime.combine(end + timedelta(days=1), time.min)
     rows = (
         db.query(SampleRequest)
-        .filter(SampleRequest.requested_date.between(start, end))
+        .filter(SampleRequest.created_at >= start_dt)
+        .filter(SampleRequest.created_at < end_dt)
         .all()
     )
     counts: Dict[str, int] = defaultdict(int)
