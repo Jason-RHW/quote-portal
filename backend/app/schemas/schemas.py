@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, computed_field, model_validator
+from uuid import UUID
+from pydantic import BaseModel, computed_field, field_validator, model_validator
 
 from app.models.db_models import QuoteStatus
 
@@ -238,10 +239,20 @@ class AvailablePeriodsOut(BaseModel):
 from app.models.db_models import SampleRequestStatus, AddressVerificationStatus, FormFieldType
 
 
+def stringify_uuid(value):
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, list):
+        return [stringify_uuid(item) for item in value]
+    return value
+
+
 class SdrOut(BaseModel):
     id: str
     full_name: str
     active: bool
+
+    _stringify_ids = field_validator("id", mode="before")(stringify_uuid)
 
     class Config:
         from_attributes = True
@@ -279,6 +290,8 @@ class BrandOut(BrandBase):
     id: str
     created_at: datetime
 
+    _stringify_ids = field_validator("id", mode="before")(stringify_uuid)
+
     class Config:
         from_attributes = True
 
@@ -311,6 +324,8 @@ class FormFieldUpdate(BaseModel):
 class FormFieldOut(FormFieldBase):
     id: str
     created_at: datetime
+
+    _stringify_ids = field_validator("id", mode="before")(stringify_uuid)
 
     class Config:
         from_attributes = True
@@ -427,6 +442,8 @@ class SampleRequestOut(BaseModel):
     updated_at: datetime
     brand_ids: List[str] = []
 
+    _stringify_ids = field_validator("id", "sdr_id", "brand_ids", mode="before")(stringify_uuid)
+
     class Config:
         from_attributes = True
 
@@ -439,6 +456,8 @@ class SampleRequestEventOut(BaseModel):
     changed_by: Optional[str] = None
     note: Optional[str] = None
     changed_at: datetime
+
+    _stringify_ids = field_validator("id", "sample_request_id", mode="before")(stringify_uuid)
 
     class Config:
         from_attributes = True
