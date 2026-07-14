@@ -417,7 +417,7 @@ class SampleRequestOut(BaseModel):
     contact_name: Optional[str] = None
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
-    business_name: str
+    business_name: Optional[str] = None
     address_line: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
