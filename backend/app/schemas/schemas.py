@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, computed_field, model_validator
 
@@ -230,3 +230,215 @@ class AvailablePeriodsOut(BaseModel):
     daily: List[str]
     weekly: List[str]
     monthly: List[str]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Sample Management Portal
+# ─────────────────────────────────────────────────────────────────────────
+from app.models.db_models import SampleRequestStatus, AddressVerificationStatus, FormFieldType
+
+
+class SdrOut(BaseModel):
+    id: str
+    full_name: str
+    active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class SdrCreate(BaseModel):
+    full_name: str
+    active: bool = True
+
+
+class SdrUpdate(BaseModel):
+    full_name: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class BrandBase(BaseModel):
+    name: str
+    color_bg: Optional[str] = None
+    color_text: Optional[str] = None
+    active: bool = True
+
+
+class BrandCreate(BrandBase):
+    pass
+
+
+class BrandUpdate(BaseModel):
+    name: Optional[str] = None
+    color_bg: Optional[str] = None
+    color_text: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class BrandOut(BrandBase):
+    id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FormFieldBase(BaseModel):
+    field_key: str
+    label: str
+    field_type: FormFieldType
+    options: Optional[List[str]] = None
+    multiple: bool = False
+    required: bool = False
+    sort_order: int = 0
+    active: bool = True
+
+
+class FormFieldCreate(FormFieldBase):
+    pass
+
+
+class FormFieldUpdate(BaseModel):
+    label: Optional[str] = None
+    field_type: Optional[FormFieldType] = None
+    options: Optional[List[str]] = None
+    multiple: Optional[bool] = None
+    required: Optional[bool] = None
+    sort_order: Optional[int] = None
+    active: Optional[bool] = None
+
+
+class FormFieldOut(FormFieldBase):
+    id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── SDR-facing submission (public endpoint, gated by SDR access code, not admin JWT) ──
+class SampleRequestSubmit(BaseModel):
+    sdr_id: Optional[str] = None   # None allowed — "None" option on the form
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    business_name: str
+    address_line: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    requested_date: Optional[date] = None  # defaults to today if omitted
+    custom_fields: Optional[Dict[str, Any]] = None
+
+
+# ── Admin manual add — same fields, plus everything backfill needs, ungated ──
+class SampleRequestCreate(BaseModel):
+    sdr_id: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    business_name: str
+    address_line: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    requested_date: Optional[date] = None
+    status: SampleRequestStatus = SampleRequestStatus.requested
+    tracking_number: Optional[str] = None
+    sent_date: Optional[date] = None
+    delivered_date: Optional[date] = None
+    assignment_note: Optional[str] = None
+    brand_ids: Optional[List[str]] = None
+    custom_fields: Optional[Dict[str, Any]] = None
+
+
+class SampleRequestUpdate(BaseModel):
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    business_name: Optional[str] = None
+    address_line: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    tracking_number: Optional[str] = None
+    sent_date: Optional[date] = None
+    delivered_date: Optional[date] = None
+    assignment_note: Optional[str] = None
+    brand_ids: Optional[List[str]] = None
+    custom_fields: Optional[Dict[str, Any]] = None
+
+
+# ── Status change — the gated action. tracking_number/sent_date required
+# going to "sent"; delivered_date required going to "delivered" (and
+# tracking/sent too, if the record skipped "sent" entirely). Enforced
+# server-side in the service layer, not just trusted from the frontend. ──
+class SampleRequestStatusChange(BaseModel):
+    status: SampleRequestStatus
+    tracking_number: Optional[str] = None
+    sent_date: Optional[date] = None
+    delivered_date: Optional[date] = None
+    changed_by: Optional[str] = None
+
+
+class BatchStatusChange(BaseModel):
+    ids: List[str]
+    status: SampleRequestStatus
+    changed_by: Optional[str] = None
+
+
+class BatchArchive(BaseModel):
+    ids: List[str]
+    changed_by: Optional[str] = None
+
+
+class AddressVerifyConfirm(BaseModel):
+    verified_by: str
+
+
+class SampleRequestOut(BaseModel):
+    id: str
+    sdr_id: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    business_name: str
+    address_line: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    status: SampleRequestStatus
+    tracking_number: Optional[str] = None
+    sent_date: Optional[date] = None
+    delivered_date: Optional[date] = None
+    assignment_note: Optional[str] = None
+    custom_fields: Dict[str, Any] = {}
+    address_verification_status: AddressVerificationStatus
+    address_verification_note: Optional[str] = None
+    address_verification_confidence: Optional[int] = None
+    address_verification_source_url: Optional[str] = None
+    address_verified_by: Optional[str] = None
+    address_verified_at: Optional[datetime] = None
+    hubspot_sent_synced: bool
+    hubspot_delivered_synced: bool
+    archived_at: Optional[datetime] = None
+    requested_date: date
+    created_at: datetime
+    updated_at: datetime
+    brand_ids: List[str] = []
+
+    class Config:
+        from_attributes = True
+
+
+class SampleRequestEventOut(BaseModel):
+    id: str
+    sample_request_id: str
+    from_status: Optional[str] = None
+    to_status: str
+    changed_by: Optional[str] = None
+    note: Optional[str] = None
+    changed_at: datetime
+
+    class Config:
+        from_attributes = True

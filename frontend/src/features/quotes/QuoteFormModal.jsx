@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { SDR_LIST } from "../../config/sdrs";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../../api/client";
 import "../../components/shared.css";
 
 const BRANDS   = ["TitanFlex", "SwiftGrip", "Schneider", "SwiftLite"];
@@ -21,8 +21,20 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
     associated_sdr: quote.associated_sdr  || "",
   });
   const [lineItems, setLineItems] = useState(existingLines);
+  const [sdrs, setSdrs] = useState([]);
   const [saving,    setSaving]    = useState(false);
   const [errors,    setErrors]    = useState([]);
+
+  useEffect(() => {
+    api.sdrs.list(false).then(setSdrs).catch(() => setSdrs([]));
+  }, []);
+
+  const sdrOptions = useMemo(() => {
+    const names = sdrs.map(s => s.full_name);
+    return form.associated_sdr && !names.includes(form.associated_sdr)
+      ? [form.associated_sdr, ...names]
+      : names;
+  }, [sdrs, form.associated_sdr]);
 
   function setField(field, value) { setForm(f => ({ ...f, [field]: value })); }
   function setLine(i, field, value) {
@@ -124,7 +136,7 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
                 <label>Associated SDR</label>
                 <select value={form.associated_sdr} onChange={e => setField("associated_sdr", e.target.value)}>
                   <option value="">— None —</option>
-                  {SDR_LIST.map(name => <option key={name}>{name}</option>)}
+                  {sdrOptions.map(name => <option key={name}>{name}</option>)}
                 </select>
               </div>
             </div>

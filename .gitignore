@@ -1,18 +1,25 @@
 # Dependencies
 frontend/node_modules/
+sample-request-form/node_modules/
+backend/venv/
 
 # Build output
 frontend/dist/
+sample-request-form/dist/
 backend/.vercel/
 frontend/.vercel/
+sample-request-form/.vercel/
 
 # Local environment files
 backend/.env
 backend/.env.*
 frontend/.env
 frontend/.env.*
+sample-request-form/.env
+sample-request-form/.env.*
 !backend/.env.example
 !frontend/.env.example
+!sample-request-form/.env.example
 
 # Local databases
 backend/quote_portal.db

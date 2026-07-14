@@ -54,3 +54,38 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# SDR-form auth — deliberately separate from the admin password above.
+# Same JWT mechanism, different "sub" claim, so a leaked/shared SDR code
+# can never be used to reach admin-only routes, and vice versa.
+# ─────────────────────────────────────────────────────────────────────────
+SDR_FORM_CODE_HASH = os.getenv("SDR_FORM_CODE_HASH", "")
+SDR_FORM_CODE_PLAINTEXT = os.getenv("SDR_FORM_CODE", "samples1234")
+SDR_TOKEN_EXPIRE_HOURS = 12
+
+
+def check_sdr_code(plain: str) -> bool:
+    if SDR_FORM_CODE_HASH:
+        return pwd_context.verify(plain, SDR_FORM_CODE_HASH)
+    return plain == SDR_FORM_CODE_PLAINTEXT
+
+
+def create_sdr_token() -> str:
+    expire = datetime.now(timezone.utc) + timedelta(hours=SDR_TOKEN_EXPIRE_HOURS)
+    return jwt.encode({"exp": expire, "sub": "sdr_form"}, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_sdr_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("sub") != "sdr_form":
+            raise JWTError()
+        return payload
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired SDR access code session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

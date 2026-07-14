@@ -1,12 +1,14 @@
 import { useState } from "react";
 import "../../components/shared.css";
 
+const ACCOUNT_STATUSES = ["Registered", "In progress", "On hold", "Rejected/Cancelled"];
+
 export default function AccountFormModal({ account, onClose, onSave }) {
   const [form, setForm] = useState({
     business_name:     account.business_name     || "",
     account_number:    account.account_number    || "",
     registration_date: account.registration_date ? account.registration_date.slice(0, 10) : "",
-    status:            account.status            || "",
+    status:            account.status            || "Registered",
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState(null);
@@ -49,7 +51,9 @@ export default function AccountFormModal({ account, onClose, onSave }) {
               </div>
               <div className="form-field">
                 <label>Status</label>
-                <input value={form.status} onChange={e => setField("status", e.target.value)} />
+                <select value={form.status} onChange={e => setField("status", e.target.value)}>
+                  {ACCOUNT_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
               </div>
             </div>
           </div>

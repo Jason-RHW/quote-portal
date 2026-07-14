@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { SDR_LIST } from "../../config/sdrs";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../../api/client";
 import "../../components/shared.css";
 
 export default function POFormModal({ po, onClose, onSave }) {
@@ -9,8 +9,20 @@ export default function POFormModal({ po, onClose, onSave }) {
     date_of_po:     po.date_of_po     ? po.date_of_po.slice(0, 10) : "",
     associated_sdr: po.associated_sdr || "",
   });
+  const [sdrs, setSdrs] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState(null);
+
+  useEffect(() => {
+    api.sdrs.list(false).then(setSdrs).catch(() => setSdrs([]));
+  }, []);
+
+  const sdrOptions = useMemo(() => {
+    const names = sdrs.map(s => s.full_name);
+    return form.associated_sdr && !names.includes(form.associated_sdr)
+      ? [form.associated_sdr, ...names]
+      : names;
+  }, [sdrs, form.associated_sdr]);
 
   function setField(f, v) { setForm(prev => ({ ...prev, [f]: v })); }
 
@@ -56,7 +68,7 @@ export default function POFormModal({ po, onClose, onSave }) {
                 <label>Associated SDR</label>
                 <select value={form.associated_sdr} onChange={e => setField("associated_sdr", e.target.value)}>
                   <option value="">— None —</option>
-                  {SDR_LIST.map(name => <option key={name}>{name}</option>)}
+                  {sdrOptions.map(name => <option key={name}>{name}</option>)}
                 </select>
               </div>
             </div>

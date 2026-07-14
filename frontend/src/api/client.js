@@ -63,4 +63,38 @@ export const api = {
     weekly:  (weekKey)   => request(`/sdr-performance/weekly/${weekKey}`),
     monthly: (monthKey)  => request(`/sdr-performance/monthly/${monthKey}`),
   },
+  samples: {
+    list:   (params = {}) => {
+      const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ""));
+      const s = qs.toString();
+      return request(`/samples${s ? `?${s}` : ""}`);
+    },
+    get:      (id)         => request(`/samples/${id}`),
+    create:   (data)       => request("/samples", { method: "POST", body: JSON.stringify(data) }),
+    update:   (id, data)   => request(`/samples/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    changeStatus: (id, data) => request(`/samples/${id}/status`, { method: "POST", body: JSON.stringify(data) }),
+    confirmAddress: (id, verifiedBy) => request(`/samples/${id}/confirm-address`, { method: "POST", body: JSON.stringify({ verified_by: verifiedBy }) }),
+    events:   (id)         => request(`/samples/${id}/events`),
+    batchStatus:  (ids, status, changedBy) => request("/samples/batch/status", { method: "POST", body: JSON.stringify({ ids, status, changed_by: changedBy }) }),
+    batchArchive: (ids, changedBy)         => request("/samples/batch/archive", { method: "POST", body: JSON.stringify({ ids, changed_by: changedBy }) }),
+    batchHubspotSync: (ids, changedBy)     => request("/samples/batch/hubspot-sync", { method: "POST", body: JSON.stringify({ ids, changed_by: changedBy }) }),
+    batchVerifyAddresses: (ids, changedBy) => request("/samples/batch/address-verification", { method: "POST", body: JSON.stringify({ ids, changed_by: changedBy }) }),
+    verifyAddress: (id)     => request(`/samples/${id}/verify-address`, { method: "POST" }),
+  },
+  brands: {
+    list:   (includeInactive = true) => request(`/brands?include_inactive=${includeInactive}`),
+    create: (data)     => request("/brands", { method: "POST", body: JSON.stringify(data) }),
+    update: (id, data) => request(`/brands/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  },
+  sdrs: {
+    list: (includeInactive = true) => request(`/sdrs?include_inactive=${includeInactive}`),
+    create: (data)     => request("/sdrs", { method: "POST", body: JSON.stringify(data) }),
+    update: (id, data) => request(`/sdrs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  },
+  formFields: {
+    list:   (includeInactive = false) => request(`/form-fields?include_inactive=${includeInactive}`),
+    create: (data)     => request("/form-fields", { method: "POST", body: JSON.stringify(data) }),
+    update: (id, data) => request(`/form-fields/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id)        => request(`/form-fields/${id}`, { method: "DELETE" }),
+  },
 };

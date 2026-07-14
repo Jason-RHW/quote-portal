@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { api } from "../../api/client";
 import BrandChips from "../../components/BrandChips";
+import FilterDropdown from "../../components/FilterDropdown";
 import QuoteFormModal from "./QuoteFormModal";
 import QuoteDetailDrawer from "./QuoteDetailDrawer";
-import { SDR_LIST } from "../../config/sdrs";
 import "../../components/shared.css";
 
 const BRANDS  = ["TitanFlex", "SwiftGrip", "Schneider", "SwiftLite"];
@@ -51,6 +51,7 @@ export default function QuotesPage() {
   const [sortValue,    setSortValue]    = useState(null); // null | 'asc' | 'desc'
   const [filterSDR,    setFilterSDR]    = useState("");
   const [filterBrand,  setFilterBrand]  = useState("");
+  const [openFilter,   setOpenFilter]   = useState(null);
 
   async function load() {
     setLoading(true); setError(null);
@@ -111,6 +112,9 @@ export default function QuotesPage() {
 
   const counts = quotes.reduce((acc, q) => { acc[q.status] = (acc[q.status]||0)+1; return acc; }, {});
   const sortLabel = sortValue === "asc" ? "Value ↑" : sortValue === "desc" ? "Value ↓" : "Value ⇅";
+  const sdrOptions = useMemo(() => [...new Set(quotes.map(q => q.associated_sdr).filter(Boolean))].sort(), [quotes]);
+  const sdrFilterOptions = [{ value: "", label: "All SDRs" }, ...sdrOptions.map(s => ({ value: s, label: s }))];
+  const brandFilterOptions = [{ value: "", label: "All brands" }, ...BRANDS.map(b => ({ value: b, label: b }))];
 
   return (
     <div>
@@ -163,14 +167,8 @@ export default function QuotesPage() {
           </div>
           <div className="filter-divider" />
           <button className={`filter-sort-btn ${sortValue?"active":""}`} onClick={cycleSort}>{sortLabel}</button>
-          <select className="filter-select" value={filterSDR} onChange={e => setFilterSDR(e.target.value)}>
-            <option value="">All SDRs</option>
-            {SDR_LIST.map(s => <option key={s}>{s}</option>)}
-          </select>
-          <select className="filter-select" value={filterBrand} onChange={e => setFilterBrand(e.target.value)}>
-            <option value="">All brands</option>
-            {BRANDS.map(b => <option key={b}>{b}</option>)}
-          </select>
+          <FilterDropdown value={filterSDR} options={sdrFilterOptions} open={openFilter === "sdr"} onOpenChange={open => setOpenFilter(open ? "sdr" : null)} onChange={setFilterSDR} />
+          <FilterDropdown value={filterBrand} options={brandFilterOptions} open={openFilter === "brand"} onOpenChange={open => setOpenFilter(open ? "brand" : null)} onChange={setFilterBrand} />
           {hasFilters && <button className="filter-clear-btn" onClick={clearFilters}>Clear filters</button>}
         </div>
 

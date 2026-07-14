@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { api } from "../../api/client";
+import FilterDropdown from "../../components/FilterDropdown";
 import POFormModal from "./POFormModal";
-import { SDR_LIST } from "../../config/sdrs";
 import "../../components/shared.css";
 
 const PERIODS = [
@@ -39,6 +39,7 @@ export default function POsPage() {
   const [period,    setPeriod]    = useState("all");
   const [sortValue, setSortValue] = useState(null);
   const [filterSDR, setFilterSDR] = useState("");
+  const [openFilter, setOpenFilter] = useState(null);
 
   async function load() {
     setLoading(true); setError(null);
@@ -82,6 +83,8 @@ export default function POsPage() {
 
   const totalValue = visible.reduce((sum, p) => sum + (p.po_value||0), 0);
   const sortLabel  = sortValue === "asc" ? "Value ↑" : sortValue === "desc" ? "Value ↓" : "Value ⇅";
+  const sdrOptions = useMemo(() => [...new Set(pos.map(p => p.associated_sdr).filter(Boolean))].sort(), [pos]);
+  const sdrFilterOptions = [{ value: "", label: "All SDRs" }, ...sdrOptions.map(s => ({ value: s, label: s }))];
 
   return (
     <div>
@@ -124,10 +127,7 @@ export default function POsPage() {
           </div>
           <div className="filter-divider" />
           <button className={`filter-sort-btn ${sortValue?"active":""}`} onClick={cycleSort}>{sortLabel}</button>
-          <select className="filter-select" value={filterSDR} onChange={e => setFilterSDR(e.target.value)}>
-            <option value="">All SDRs</option>
-            {SDR_LIST.map(s => <option key={s}>{s}</option>)}
-          </select>
+          <FilterDropdown value={filterSDR} options={sdrFilterOptions} open={openFilter === "sdr"} onOpenChange={open => setOpenFilter(open ? "sdr" : null)} onChange={setFilterSDR} />
           {hasFilters && <button className="filter-clear-btn" onClick={clearFilters}>Clear filters</button>}
         </div>
 
