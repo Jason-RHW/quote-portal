@@ -22,7 +22,7 @@ async function request(path, options = {}) {
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`${res.status}: ${text}`);
+    throw new Error(`${path} failed (${res.status}): ${text}`);
   }
   if (res.status === 204) return null;
   return res.json();
