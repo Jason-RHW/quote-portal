@@ -23,6 +23,8 @@
   --status-fulfilled-text: #166534;
   --status-stalled-bg: #FFF1F2;
   --status-stalled-text: #BE123C;
+  --status-new-bg: #EFF6FF;
+  --status-new-text: #1D4ED8;
 
   --radius: 6px;
   --font: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;

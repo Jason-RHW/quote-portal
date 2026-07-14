@@ -1,11 +1,5 @@
 import "../../components/shared.css";
-
-const BRAND_STYLES = {
-  TitanFlex: { bg: "#FAF5FF", color: "#7E22CE" },
-  SwiftGrip: { bg: "#FFF7ED", color: "#C2410C" },
-  Schneider: { bg: "#EFF6FF", color: "#1D4ED8" },
-  SwiftLite: { bg: "#F0FDF4", color: "#15803D" },
-};
+import { brandStyle } from "../../config/brandColors";
 
 function fmt$(v) {
   return (v ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -20,7 +14,7 @@ function StatusBadge({ status }) {
 }
 
 function BrandChip({ brand }) {
-  const s = BRAND_STYLES[brand] || { bg: "#F1F5F9", color: "#475569" };
+  const s = brandStyle(brand);
   return (
     <span style={{
       display: "inline-block", padding: "2px 8px", borderRadius: 4,

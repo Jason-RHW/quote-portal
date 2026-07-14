@@ -157,23 +157,42 @@ class SdrDailyStat(Base):
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Sample Management Portal — read-only models
+# Sample Management Portal
 #
-# These tables are created directly by sample-management-schema.sql, NOT
-# by this backend's Base.metadata.create_all() — Sample Portal's own app
-# (the form, the admin console) hasn't been built yet and may or may not
-# end up living in this backend. Only the two columns the SDR Performance
-# dashboard actually needs are modeled here; brands, form_fields, and the
-# junction table aren't, since nothing in this backend reads them.
+# Mirrors sample-management-schema.sql, run directly against Supabase in
+# production (see database.py notes — Base.metadata.create_all() does NOT
+# touch production, since these tables already exist there). Locally,
+# against SQLite, create_all() DOES create these tables fresh from the
+# definitions below, which is what makes `npm run dev` + `uvicorn` work
+# with zero setup.
 #
-# Note on id types: these tables use native Postgres `uuid` columns (via
-# gen_random_uuid()), not the String-based UUIDs this backend's other
-# models use (Quote, PurchaseOrder, etc., which store uuid4() as text).
-# That's fine — psycopg2 returns native uuid columns as Python uuid.UUID
-# objects regardless of the SQLAlchemy column type declared below, and
-# joins/dict-lookups between two uuid.UUID objects work correctly. Verified
-# against a real Postgres instance before shipping this, not assumed.
+# id generation: explicitly set in the service layer (id=gen_id()) rather
+# than relied on as a column default here, on purpose — production Postgres
+# defaults these to gen_random_uuid() server-side, which SQLite has no
+# equivalent for. Setting it explicitly in Python works identically against
+# both databases instead of requiring two different default strategies.
 # ─────────────────────────────────────────────────────────────────────────
+
+class SampleRequestStatus(str, enum.Enum):
+    requested = "requested"
+    sent = "sent"
+    delivered = "delivered"
+    on_hold = "on_hold"
+    rejected = "rejected"
+
+
+class AddressVerificationStatus(str, enum.Enum):
+    unverified = "unverified"
+    ai_verified = "ai_verified"
+    human_verified = "human_verified"
+
+
+class FormFieldType(str, enum.Enum):
+    text = "text"
+    number = "number"
+    dropdown = "dropdown"
+    textarea = "textarea"
+
 
 class Sdr(Base):
     __tablename__ = "sdrs"
@@ -181,12 +200,104 @@ class Sdr(Base):
     id = Column(String, primary_key=True)
     full_name = Column(String, nullable=False, unique=True)
     active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Brand(Base):
+    __tablename__ = "brands"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+    color_bg = Column(String, nullable=True)
+    color_text = Column(String, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class SampleRequest(Base):
     __tablename__ = "sample_requests"
 
     id = Column(String, primary_key=True)
-    sdr_id = Column(String, nullable=True)
-    status = Column(String, nullable=False, default="requested")
-    created_at = Column(DateTime, nullable=False)  # KPI attribution date — when the SDR filled the form
+    sdr_id = Column(String, nullable=True, index=True)
+
+    contact_name = Column(String, nullable=True)
+    contact_email = Column(String, nullable=True)
+    contact_phone = Column(String, nullable=True)
+    business_name = Column(String, nullable=False, index=True)
+    address_line = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+
+    status = Column(SAEnum(SampleRequestStatus), nullable=False, default=SampleRequestStatus.requested)
+    tracking_number = Column(String, nullable=True)
+    sent_date = Column(Date, nullable=True)
+    delivered_date = Column(Date, nullable=True)
+    assignment_note = Column(String, nullable=True)
+
+    custom_fields = Column(JSON, nullable=False, default=dict)  # Form Builder field answers
+
+    # Address verification (AI check — see sample_verification_service.py)
+    address_verification_status = Column(SAEnum(AddressVerificationStatus), nullable=False, default=AddressVerificationStatus.unverified)
+    address_verification_note = Column(String, nullable=True)
+    address_verification_confidence = Column(Integer, nullable=True)
+    address_verification_source_url = Column(String, nullable=True)
+    address_verified_by = Column(String, nullable=True)
+    address_verified_at = Column(DateTime(timezone=True), nullable=True)
+
+    # HubSpot sync (stubbed — not wired up yet)
+    hubspot_contact_id = Column(String, nullable=True)
+    hubspot_company_id = Column(String, nullable=True)
+    hubspot_sent_synced = Column(Boolean, nullable=False, default=False)
+    hubspot_delivered_synced = Column(Boolean, nullable=False, default=False)
+
+    archived_at = Column(DateTime(timezone=True), nullable=True)  # soft delete
+    requested_date = Column(Date, nullable=False)  # backfill-accurate date — see requested_date note in migration
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SampleRequestBrand(Base):
+    """Junction table — a sample request can have more than one brand assigned."""
+    __tablename__ = "sample_request_brands"
+
+    id = Column(String, primary_key=True)
+    sample_request_id = Column(String, nullable=False, index=True)
+    brand_id = Column(String, nullable=False, index=True)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("sample_request_id", "brand_id", name="uq_sample_request_brand"),
+    )
+
+
+class FormField(Base):
+    """Form Builder config. Only custom fields live here — core fields (contact
+    name/email/business/address, etc.) are fixed columns on SampleRequest above,
+    not builder-controlled, so they can't be edited or removed via this table."""
+    __tablename__ = "form_fields"
+
+    id = Column(String, primary_key=True)
+    field_key = Column(String, nullable=False, unique=True)
+    label = Column(String, nullable=False)
+    field_type = Column(SAEnum(FormFieldType), nullable=False)
+    options = Column(JSON, nullable=True)  # dropdown choices, e.g. ["S","M","L"]
+    multiple = Column(Boolean, nullable=False, default=False)  # multi-select dropdown (e.g. Glove Type, Color) vs single-select (e.g. Size)
+    required = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SampleRequestEvent(Base):
+    """Audit trail — who changed what status when. Written by the service layer
+    on every status transition and every batch action."""
+    __tablename__ = "sample_request_events"
+
+    id = Column(String, primary_key=True)
+    sample_request_id = Column(String, nullable=False, index=True)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=False)
+    changed_by = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    changed_at = Column(DateTime(timezone=True), server_default=func.now())
