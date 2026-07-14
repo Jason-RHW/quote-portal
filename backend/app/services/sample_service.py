@@ -34,12 +34,21 @@ def gen_id() -> str:
 
 def _brand_ids_for(db: Session, sample_request_id: str) -> List[str]:
     rows = db.query(SampleRequestBrand).filter(SampleRequestBrand.sample_request_id == sample_request_id).all()
-    return [r.brand_id for r in rows]
+    return [str(r.brand_id) for r in rows]
+
+
+def _normalize_request_ids(req: SampleRequest) -> SampleRequest:
+    req.id = str(req.id)
+    if req.sdr_id is not None:
+        req.sdr_id = str(req.sdr_id)
+    req.brand_ids = [str(bid) for bid in getattr(req, "brand_ids", [])]
+    return req
 
 
 def _attach_brand_ids(db: Session, requests: List[SampleRequest]) -> List[SampleRequest]:
     for r in requests:
         r.brand_ids = _brand_ids_for(db, r.id)
+        _normalize_request_ids(r)
     return requests
 
 
@@ -75,6 +84,7 @@ def get_sample_request(db: Session, request_id: str) -> Optional[SampleRequest]:
     req = db.query(SampleRequest).filter(SampleRequest.id == request_id).first()
     if req:
         req.brand_ids = _brand_ids_for(db, req.id)
+        _normalize_request_ids(req)
     return req
 
 
@@ -162,7 +172,7 @@ def submit_sample_request(db: Session, data: SampleRequestSubmit) -> SampleReque
     db.refresh(req)
     _run_verification_best_effort(db, req)
     req.brand_ids = []
-    return req
+    return _normalize_request_ids(req)
 
 
 # ── Create (admin manual add — ungated dates/status, for backfill) ──
@@ -197,7 +207,7 @@ def create_sample_request(db: Session, data: SampleRequestCreate, changed_by: Op
     db.refresh(req)
     _run_verification_best_effort(db, req)
     req.brand_ids = data.brand_ids or []
-    return req
+    return _normalize_request_ids(req)
 
 
 def update_sample_request(db: Session, request_id: str, data: SampleRequestUpdate) -> Optional[SampleRequest]:
@@ -223,7 +233,7 @@ def update_sample_request(db: Session, request_id: str, data: SampleRequestUpdat
     db.commit()
     db.refresh(req)
     req.brand_ids = _brand_ids_for(db, req.id)
-    return req
+    return _normalize_request_ids(req)
 
 
 # ── Status change — the gated action ──
@@ -272,7 +282,7 @@ def change_status(db: Session, request_id: str, data: SampleRequestStatusChange)
     db.commit()
     db.refresh(req)
     req.brand_ids = _brand_ids_for(db, req.id)
-    return req
+    return _normalize_request_ids(req)
 
 
 # ── Batch actions ──
@@ -407,10 +417,10 @@ def rerun_address_verification(db: Session, request_id: str) -> Optional[SampleR
         db.commit()
         db.refresh(req)
         req.brand_ids = _brand_ids_for(db, req.id)
-        return req
+        return _normalize_request_ids(req)
     _run_verification_best_effort(db, req)
     req.brand_ids = _brand_ids_for(db, req.id)
-    return req
+    return _normalize_request_ids(req)
 
 
 def confirm_address_verified(db: Session, request_id: str, verified_by: str) -> Optional[SampleRequest]:
@@ -424,7 +434,7 @@ def confirm_address_verified(db: Session, request_id: str, verified_by: str) -> 
     db.commit()
     db.refresh(req)
     req.brand_ids = _brand_ids_for(db, req.id)
-    return req
+    return _normalize_request_ids(req)
 
 
 def get_events(db: Session, request_id: str) -> List[SampleRequestEvent]:
