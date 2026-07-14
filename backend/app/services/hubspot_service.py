@@ -1,15 +1,17 @@
 import os
 import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 
 import requests
 
-from app.models.db_models import SampleRequest
+from app.models.db_models import SampleRequest, SampleRequestStatus
 
 
 BASE_URL = "https://api.hubapi.com"
 DEFAULT_SAMPLE_SENT_STAGE = "3634488044"
+DEFAULT_SAMPLE_DELIVERED_STAGE = "3631125214"
 
 
 class HubSpotSyncError(Exception):
@@ -35,6 +37,14 @@ def _sample_sent_stage() -> str:
         os.getenv("HUBSPOT_SAMPLE_SENT_STAGE_ID")
         or os.getenv("HUBSPOT_LIFECYCLE_STAGE_SAMPLE_SENT")
         or DEFAULT_SAMPLE_SENT_STAGE
+    )
+
+
+def _sample_delivered_stage() -> str:
+    return (
+        os.getenv("HUBSPOT_SAMPLE_DELIVERED_STAGE_ID")
+        or os.getenv("HUBSPOT_LIFECYCLE_STAGE_SAMPLE_DELIVERED")
+        or DEFAULT_SAMPLE_DELIVERED_STAGE
     )
 
 
@@ -118,6 +128,28 @@ def find_company_for_contact(contact_id: str, business_name: Optional[str]) -> O
     return find_company(business_name)
 
 
+def find_primary_company_for_contact(contact_id: str, business_name: Optional[str]) -> Optional[str]:
+    try:
+        results = _request("GET", f"/crm/v4/objects/contacts/{contact_id}/associations/companies").get("results", [])
+        company_ids = []
+        for association in results:
+            company_id = association.get("toObjectId") or association.get("id")
+            if not company_id:
+                continue
+            company_ids.append(str(company_id))
+            labels = [
+                str(assoc_type.get("label", "")).strip().lower()
+                for assoc_type in association.get("associationTypes", [])
+            ]
+            if "primary" in labels:
+                return str(company_id)
+        if len(company_ids) == 1:
+            return company_ids[0]
+    except HubSpotSyncError:
+        pass
+    return find_company(business_name)
+
+
 def create_note_for_contact(contact_id: str, product_sent: str, tracking_id: str) -> bool:
     note_id = _create_note(product_sent, tracking_id)
     _request("PUT", f"/crm/v3/objects/notes/{note_id}/associations/contacts/{contact_id}/note_to_contact")
@@ -130,8 +162,31 @@ def create_note_for_company(company_id: str, product_sent: str, tracking_id: str
     return True
 
 
+def create_delivery_note_for_contact(contact_id: str, delivered_date: date) -> bool:
+    note_id = _create_delivery_note(delivered_date)
+    _request("PUT", f"/crm/v3/objects/notes/{note_id}/associations/contacts/{contact_id}/note_to_contact")
+    return True
+
+
+def create_delivery_note_for_company(company_id: str, delivered_date: date) -> bool:
+    note_id = _create_delivery_note(delivered_date)
+    _request("PUT", f"/crm/v3/objects/notes/{note_id}/associations/companies/{company_id}/note_to_company")
+    return True
+
+
 def _create_note(product_sent: str, tracking_id: str) -> str:
     note_body = f"Product Sent: {product_sent}; USPS Tracking #: {tracking_id}"
+    payload = {
+        "properties": {
+            "hs_note_body": note_body,
+            "hs_timestamp": str(int(time.time() * 1000)),
+        }
+    }
+    return _request("POST", "/crm/v3/objects/notes", json=payload)["id"]
+
+
+def _create_delivery_note(delivered_date: date) -> str:
+    note_body = f"Sample was delivered on {delivered_date.isoformat()}."
     payload = {
         "properties": {
             "hs_note_body": note_body,
@@ -177,7 +232,71 @@ def update_company_lifecycle_stage(company_id: str) -> bool:
     return True
 
 
+def update_contact_delivered_lifecycle_stage(contact_id: str) -> bool:
+    _request(
+        "PATCH",
+        f"/crm/v3/objects/contacts/{contact_id}",
+        json={"properties": {"lifecyclestage": _sample_delivered_stage()}},
+    )
+    return True
+
+
+def update_company_delivered_lifecycle_stage(company_id: str) -> bool:
+    _request(
+        "PATCH",
+        f"/crm/v3/objects/companies/{company_id}",
+        json={"properties": {"lifecyclestage": _sample_delivered_stage()}},
+    )
+    return True
+
+
+def find_contact_list_by_name(list_name: str) -> Optional[str]:
+    response = _request(
+        "GET",
+        "/crm/v3/lists",
+        params={"objectTypeId": "0-1", "listType": "STATIC", "count": 500},
+    )
+    for list_item in response.get("lists", []):
+        if list_item.get("name") == list_name:
+            return str(list_item.get("listId") or list_item.get("id"))
+    return None
+
+
+def create_static_contact_list(list_name: str) -> Optional[str]:
+    response = _request(
+        "POST",
+        "/crm/v3/lists",
+        json={"name": list_name, "objectTypeId": "0-1", "processingType": "MANUAL"},
+    )
+    list_data = response.get("list", response)
+    list_id = list_data.get("listId") or list_data.get("id")
+    return str(list_id) if list_id else None
+
+
+def get_or_create_static_contact_list(list_name: str) -> Optional[str]:
+    return find_contact_list_by_name(list_name) or create_static_contact_list(list_name)
+
+
+def add_contact_to_list(list_id: str, contact_id: str) -> bool:
+    _request("PUT", f"/crm/v3/lists/{list_id}/memberships/add", json=[int(contact_id)])
+    return True
+
+
+def add_contact_to_delivered_list(contact_id: str, delivered_date: date) -> bool:
+    list_name = f"Sample Delivered Contacts {delivered_date.isoformat()}"
+    list_id = get_or_create_static_contact_list(list_name)
+    if not list_id:
+        raise HubSpotSyncError(f"Could not create or find HubSpot list: {list_name}")
+    return add_contact_to_list(list_id, contact_id)
+
+
 def sync_sample(req: SampleRequest, product_sent: str) -> HubSpotSyncResult:
+    if req.status == SampleRequestStatus.delivered:
+        return sync_sample_delivered(req)
+    return sync_sample_sent(req, product_sent)
+
+
+def sync_sample_sent(req: SampleRequest, product_sent: str) -> HubSpotSyncResult:
     tracking_id = (req.tracking_number or "").strip()
     if not tracking_id:
         raise HubSpotSyncError("Tracking number is required before syncing to HubSpot.")
@@ -205,3 +324,23 @@ def sync_sample(req: SampleRequest, product_sent: str) -> HubSpotSyncResult:
     update_company_lifecycle_stage(company_id)
     update_company_tracking_number(company_id, tracking_id)
     return HubSpotSyncResult(company_id=company_id)
+
+
+def sync_sample_delivered(req: SampleRequest) -> HubSpotSyncResult:
+    if not req.delivered_date:
+        raise HubSpotSyncError("Delivered date is required before syncing delivery to HubSpot.")
+
+    contact_id = find_contact(req.contact_email, req.contact_name)
+    if not contact_id:
+        raise HubSpotSyncError("No matching HubSpot contact was found for delivery sync.")
+
+    company_id = find_primary_company_for_contact(contact_id, req.business_name)
+    if not company_id:
+        raise HubSpotSyncError("No matching HubSpot company was found for delivery sync.")
+
+    create_delivery_note_for_contact(contact_id, req.delivered_date)
+    update_contact_delivered_lifecycle_stage(contact_id)
+    create_delivery_note_for_company(company_id, req.delivered_date)
+    update_company_delivered_lifecycle_stage(company_id)
+    add_contact_to_delivered_list(contact_id, req.delivered_date)
+    return HubSpotSyncResult(contact_id=contact_id, company_id=company_id)
