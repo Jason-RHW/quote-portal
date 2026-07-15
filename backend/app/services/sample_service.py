@@ -92,6 +92,7 @@ def _set_brands(db: Session, request_id: str, brand_ids: List[str]):
     db.query(SampleRequestBrand).filter(SampleRequestBrand.sample_request_id == request_id).delete()
     for bid in brand_ids:
         db.add(SampleRequestBrand(id=gen_id(), sample_request_id=request_id, brand_id=bid))
+        db.flush()
 
 
 def _log_event(db: Session, request_id: str, from_status: Optional[str], to_status: str,
