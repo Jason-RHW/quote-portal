@@ -22,6 +22,9 @@ export const BRAND_COLORS = {
   SwiftGrip: { bg: "#FDF2F8", color: "#BE185D" },
   SwiftLite: { bg: "#F0FDF4", color: "#15803D" },
   TitanFlex: { bg: "#FFF7ED", color: "#C2410C" },
+  "Cut Resistant Gloves": { bg: "#ECFEFF", color: "#0E7490" },
+  "Work Gloves": { bg: "#F5F3FF", color: "#6D28D9" },
+  Bandage: { bg: "#FEF2F2", color: "#B91C1C" },
 };
 
 export function brandStyle(brand) {

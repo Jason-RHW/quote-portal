@@ -201,7 +201,12 @@ def brand_ids_from_product(db, product_sent: Optional[str]) -> list[str]:
     ids = []
     for brand in brands:
         brand_key = brand.name.lower()
-        if brand_key in product or brand_key.replace("flex", "flex") in product:
+        aliases = {
+            "cut resistant gloves": ["cut resistant gloves", "cut-resistant gloves", "cut resistant", "cut-resistant"],
+            "work gloves": ["work gloves", "work glove"],
+            "bandage": ["bandage", "bandages"],
+        }.get(brand_key, [brand_key])
+        if any(alias in product for alias in aliases):
             ids.append(brand.id)
     return ids
 
@@ -406,6 +411,7 @@ def main():
     parser.add_argument("--verify-addresses", action="store_true", help="Run OpenAI address verification on imported rows.")
     parser.add_argument("--sync-hubspot", action="store_true", help="Run HubSpot sync on imported sent/delivered rows with tracking.")
     parser.add_argument("--update-existing", action="store_true", help="Update existing matching rows from the workbook instead of only inserting new rows.")
+    parser.add_argument("--only-status", choices=[s.value for s in SampleRequestStatus], default=None, help="Only process rows whose workbook-derived sample status matches this value.")
     parser.add_argument("--no-create-missing-sdrs", action="store_true", help="Do not create historical SDR names if missing.")
     parser.add_argument("--create-tables", action="store_true", help="Create missing tables first. Defaults to on only for local SQLite.")
     args = parser.parse_args()
@@ -421,6 +427,10 @@ def main():
         for row in rows:
             if args.limit and len(imported) + len(updated) >= args.limit:
                 break
+            if args.only_status:
+                preview_values = desired_values(db, row, create_missing_sdrs=False)
+                if not preview_values or preview_values["status"].value != args.only_status:
+                    continue
             req = (
                 update_request_from_row(db, row, create_missing_sdrs=not args.no_create_missing_sdrs)
                 if args.update_existing

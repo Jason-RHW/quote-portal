@@ -38,6 +38,9 @@ BRANDS = [
     ("SwiftGrip", "#FDF2F8", "#BE185D"),
     ("SwiftLite", "#F0FDF4", "#15803D"),
     ("TitanFlex", "#FFF7ED", "#C2410C"),
+    ("Cut Resistant Gloves", "#ECFEFF", "#0E7490"),
+    ("Work Gloves", "#F5F3FF", "#6D28D9"),
+    ("Bandage", "#FEF2F2", "#B91C1C"),
 ]
 
 FORM_FIELDS = [
