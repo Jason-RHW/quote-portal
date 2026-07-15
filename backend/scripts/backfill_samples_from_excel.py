@@ -70,6 +70,13 @@ COLS = {
     "tracking_number": "Tracking ID",
     "delivery_status": "Delivered Date/Delivery Status",
     "note": "Note",
+    "website_url": "Website URL",
+    "industries": "Industries",
+    "keywords": "Keywords",
+    "number_of_employees": "Number of employees",
+    "location": "Location",
+    "revenue": "Revenue",
+    "number_of_retail_locations": "Number of retail locations",
     "hubspot_note_processed": "Hubspot Note Processed",
     "sales_owner": "Sales Owner",
     "form_submitted_at": "Form Submiited At",
@@ -137,6 +144,10 @@ def norm(value: str) -> str:
     return " ".join(value.lower().split())
 
 
+def gen_db_id():
+    return str(uuid.uuid4()) if is_sqlite else uuid.uuid4()
+
+
 def is_processed(value: Any) -> bool:
     text = norm(clean(value) or "")
     if not text:
@@ -176,7 +187,7 @@ def ensure_sdr(db, owner_name: Optional[str], create_missing: bool) -> Optional[
         return existing.id
     if not create_missing:
         return None
-    sdr = Sdr(id=str(uuid.uuid4()), full_name=canonical, active=False)
+    sdr = Sdr(id=gen_db_id(), full_name=canonical, active=False)
     db.add(sdr)
     db.flush()
     return sdr.id
@@ -204,6 +215,13 @@ def custom_fields_from(row: dict[str, Any]) -> dict[str, Any]:
         "employee_count": "employee_count",
         "daily_changes": "daily_changes",
         "current_supplier": "current_supplier",
+        "website_url": "website_url",
+        "industries": "industries",
+        "keywords": "keywords",
+        "number_of_employees": "number_of_employees",
+        "location": "location",
+        "revenue": "revenue",
+        "number_of_retail_locations": "number_of_retail_locations",
     }
     for source, target in mappings.items():
         value = clean(row.get(COLS[source]))
@@ -219,14 +237,19 @@ def custom_fields_from(row: dict[str, Any]) -> dict[str, Any]:
     return fields
 
 
-def already_exists(db, email: Optional[str], business_name: str, requested_date: date) -> bool:
-    query = db.query(SampleRequest).filter(
-        SampleRequest.business_name == business_name,
-        SampleRequest.requested_date == requested_date,
-    )
+def find_existing(db, email: Optional[str], business_name: str, submitted_at: Optional[datetime], requested_date: date) -> Optional[SampleRequest]:
+    query = db.query(SampleRequest).filter(SampleRequest.business_name == business_name)
     if email:
         query = query.filter(SampleRequest.contact_email == email)
-    return db.query(query.exists()).scalar()
+    candidates = query.all()
+    if submitted_at:
+        for req in candidates:
+            if req.created_at and req.created_at.date() == submitted_at.date():
+                return req
+    for req in candidates:
+        if req.requested_date == requested_date:
+            return req
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def load_rows(path: Path) -> list[dict[str, Any]]:
@@ -241,7 +264,7 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Optional[SampleRequest]:
+def desired_values(db, row: dict[str, Any], create_missing_sdrs: bool) -> Optional[dict[str, Any]]:
     business_name = clean(row.get(COLS["business_name"]))
     if not business_name:
         return None
@@ -249,8 +272,6 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
     contact_email = clean(row.get(COLS["contact_email"]))
     submitted_at = as_datetime(row.get(COLS["form_submitted_at"]))
     requested_date = submitted_at.date() if submitted_at else date.today()
-    if already_exists(db, contact_email, business_name, requested_date):
-        return None
 
     tracking_number = as_int_text(row.get(COLS["tracking_number"]))
     delivered_date = as_date(row.get(COLS["delivered_date"])) or as_date(row.get(COLS["delivery_status"]))
@@ -270,49 +291,102 @@ def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Option
         requested_date if status in {SampleRequestStatus.sent, SampleRequestStatus.delivered} else None
     )
     product_sent = clean(row.get(COLS["product_sent"])) or clean(row.get(COLS["sample_sent"]))
-    brand_ids = brand_ids_from_product(db, product_sent)
 
-    req = SampleRequest(
-        id=str(uuid.uuid4()),
-        sdr_id=ensure_sdr(db, clean(row.get(COLS["sales_owner"])), create_missing_sdrs),
-        contact_name=clean(row.get(COLS["contact_name"])),
-        contact_email=contact_email,
-        contact_phone=as_int_text(row.get(COLS["contact_phone"])),
-        business_name=business_name,
-        address_line=clean(row.get(COLS["address_line"])),
-        city=clean(row.get(COLS["city"])),
-        state=clean(row.get(COLS["state"])),
-        zip_code=as_int_text(row.get(COLS["zip_code"])),
-        requested_date=requested_date,
-        created_at=submitted_at or datetime.combine(requested_date, datetime.min.time()),
-        updated_at=submitted_at or datetime.combine(requested_date, datetime.min.time()),
-        status=status,
-        tracking_number=tracking_number,
-        sent_date=sent_date,
-        delivered_date=delivered_date,
-        assignment_note=product_sent,
-        custom_fields=custom_fields_from(row),
-        address_verification_status=AddressVerificationStatus.unverified,
-        hubspot_sent_synced=hubspot_sent_synced,
-        hubspot_delivered_synced=hubspot_delivered_synced,
-    )
+    return {
+        "sdr_id": ensure_sdr(db, clean(row.get(COLS["sales_owner"])), create_missing_sdrs),
+        "contact_name": clean(row.get(COLS["contact_name"])),
+        "contact_email": contact_email,
+        "contact_phone": as_int_text(row.get(COLS["contact_phone"])),
+        "business_name": business_name,
+        "address_line": clean(row.get(COLS["address_line"])),
+        "city": clean(row.get(COLS["city"])),
+        "state": clean(row.get(COLS["state"])),
+        "zip_code": as_int_text(row.get(COLS["zip_code"])),
+        "requested_date": requested_date,
+        "created_at": submitted_at or datetime.combine(requested_date, datetime.min.time()),
+        "updated_at": submitted_at or datetime.combine(requested_date, datetime.min.time()),
+        "status": status,
+        "tracking_number": tracking_number,
+        "sent_date": sent_date,
+        "delivered_date": delivered_date,
+        "assignment_note": product_sent,
+        "custom_fields": custom_fields_from(row),
+        "address_verification_status": AddressVerificationStatus.unverified,
+        "hubspot_sent_synced": hubspot_sent_synced,
+        "hubspot_delivered_synced": hubspot_delivered_synced,
+        "brand_ids": brand_ids_from_product(db, product_sent),
+    }
+
+
+def set_brand_ids(db, req: SampleRequest, brand_ids: list[str]):
+    db.query(SampleRequestBrand).filter(SampleRequestBrand.sample_request_id == req.id).delete()
+    for brand_id in brand_ids:
+        db.add(SampleRequestBrand(id=gen_db_id(), sample_request_id=req.id, brand_id=brand_id))
+
+
+def insert_request(db, row: dict[str, Any], create_missing_sdrs: bool) -> Optional[SampleRequest]:
+    values = desired_values(db, row, create_missing_sdrs)
+    if not values:
+        return None
+    existing = find_existing(db, values["contact_email"], values["business_name"], values["created_at"], values["requested_date"])
+    if existing:
+        return None
+
+    brand_ids = values.pop("brand_ids")
+    req = SampleRequest(id=gen_db_id(), **values)
     db.add(req)
     db.flush()
-    for brand_id in brand_ids:
-        db.add(SampleRequestBrand(id=str(uuid.uuid4()), sample_request_id=req.id, brand_id=brand_id))
+    set_brand_ids(db, req, brand_ids)
     db.add(SampleRequestEvent(
-        id=str(uuid.uuid4()),
+        id=gen_db_id(),
         sample_request_id=req.id,
         from_status=None,
-        to_status=status.value,
+        to_status=req.status.value,
         changed_by="Excel backfill",
         note=(
-            f"Imported from Sample Distribution Excel. Product Sent: {product_sent or '-'}; "
-            f"HubSpot sent synced: {'yes' if hubspot_sent_synced else 'no'}; "
-            f"HubSpot delivered synced: {'yes' if hubspot_delivered_synced else 'no'}"
+            f"Imported from Sample Distribution Excel. Product Sent: {req.assignment_note or '-'}; "
+            f"HubSpot sent synced: {'yes' if req.hubspot_sent_synced else 'no'}; "
+            f"HubSpot delivered synced: {'yes' if req.hubspot_delivered_synced else 'no'}"
         ),
     ))
     return req
+
+
+def update_request_from_row(db, row: dict[str, Any], create_missing_sdrs: bool) -> Optional[SampleRequest]:
+    values = desired_values(db, row, create_missing_sdrs)
+    if not values:
+        return None
+    req = find_existing(db, values["contact_email"], values["business_name"], values["created_at"], values["requested_date"])
+    if not req:
+        return None
+
+    brand_ids = values.pop("brand_ids")
+    previous_status = req.status.value if req.status else None
+    changed = False
+    for field, value in values.items():
+        if getattr(req, field) != value:
+            setattr(req, field, value)
+            changed = True
+    existing_brand_ids = sorted(str(row.brand_id) for row in db.query(SampleRequestBrand).filter(SampleRequestBrand.sample_request_id == req.id).all())
+    next_brand_ids = sorted(str(brand_id) for brand_id in brand_ids)
+    if existing_brand_ids != next_brand_ids:
+        set_brand_ids(db, req, brand_ids)
+        changed = True
+    if changed:
+        db.add(SampleRequestEvent(
+            id=gen_db_id(),
+            sample_request_id=req.id,
+            from_status=previous_status,
+            to_status=req.status.value,
+            changed_by="Excel backfill update",
+            note=(
+                f"Updated from latest Sample Distribution Excel. Product Sent: {req.assignment_note or '-'}; "
+                f"HubSpot sent synced: {'yes' if req.hubspot_sent_synced else 'no'}; "
+                f"HubSpot delivered synced: {'yes' if req.hubspot_delivered_synced else 'no'}"
+            ),
+        ))
+        return req
+    return None
 
 
 def hubspot_sync_needed(req: SampleRequest) -> bool:
@@ -330,6 +404,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing.")
     parser.add_argument("--verify-addresses", action="store_true", help="Run OpenAI address verification on imported rows.")
     parser.add_argument("--sync-hubspot", action="store_true", help="Run HubSpot sync on imported sent/delivered rows with tracking.")
+    parser.add_argument("--update-existing", action="store_true", help="Update existing matching rows from the workbook instead of only inserting new rows.")
     parser.add_argument("--no-create-missing-sdrs", action="store_true", help="Do not create historical SDR names if missing.")
     parser.add_argument("--create-tables", action="store_true", help="Create missing tables first. Defaults to on only for local SQLite.")
     args = parser.parse_args()
@@ -339,23 +414,32 @@ def main():
     rows = load_rows(args.xlsx_path)
     db = SessionLocal()
     imported: list[SampleRequest] = []
+    updated: list[SampleRequest] = []
 
     try:
         for row in rows:
-            if args.limit and len(imported) >= args.limit:
+            if args.limit and len(imported) + len(updated) >= args.limit:
                 break
-            req = insert_request(db, row, create_missing_sdrs=not args.no_create_missing_sdrs)
+            req = (
+                update_request_from_row(db, row, create_missing_sdrs=not args.no_create_missing_sdrs)
+                if args.update_existing
+                else insert_request(db, row, create_missing_sdrs=not args.no_create_missing_sdrs)
+            )
             if req:
-                imported.append(req)
-                print(f"import: {req.business_name} | {req.contact_email or '-'} | {req.status.value} | {req.tracking_number or '-'}")
+                if args.update_existing:
+                    updated.append(req)
+                    print(f"update: {req.business_name} | {req.contact_email or '-'} | {req.status.value} | {req.tracking_number or '-'} | sent_sync={req.hubspot_sent_synced} delivery_sync={req.hubspot_delivered_synced}")
+                else:
+                    imported.append(req)
+                    print(f"import: {req.business_name} | {req.contact_email or '-'} | {req.status.value} | {req.tracking_number or '-'}")
 
         if args.dry_run:
             db.rollback()
-            print(f"DRY RUN: would import {len(imported)} new records.")
+            print(f"DRY RUN: would import {len(imported)} new records and update {len(updated)} existing records.")
             return
 
         db.commit()
-        print(f"Imported {len(imported)} new records.")
+        print(f"Imported {len(imported)} new records and updated {len(updated)} existing records.")
 
         if args.verify_addresses:
             print("Running address verification...")
