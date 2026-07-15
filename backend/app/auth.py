@@ -62,14 +62,16 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
 # can never be used to reach admin-only routes, and vice versa.
 # ─────────────────────────────────────────────────────────────────────────
 SDR_FORM_CODE_HASH = os.getenv("SDR_FORM_CODE_HASH", "")
-SDR_FORM_CODE_PLAINTEXT = os.getenv("SDR_FORM_CODE", "samples1234")
+SDR_FORM_CODE_PLAINTEXT = os.getenv("SDR_FORM_CODE")
 SDR_TOKEN_EXPIRE_HOURS = 12
 
 
 def check_sdr_code(plain: str) -> bool:
+    if SDR_FORM_CODE_PLAINTEXT:
+        return plain == SDR_FORM_CODE_PLAINTEXT
     if SDR_FORM_CODE_HASH:
         return pwd_context.verify(plain, SDR_FORM_CODE_HASH)
-    return plain == SDR_FORM_CODE_PLAINTEXT
+    return plain == "samples1234"
 
 
 def create_sdr_token() -> str:
