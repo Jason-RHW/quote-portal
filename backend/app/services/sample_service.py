@@ -170,7 +170,6 @@ def submit_sample_request(db: Session, data: SampleRequestSubmit) -> SampleReque
     _log_event(db, req.id, None, SampleRequestStatus.requested.value, changed_by="SDR form")
     db.commit()
     db.refresh(req)
-    _run_verification_best_effort(db, req)
     req.brand_ids = []
     return _normalize_request_ids(req)
 
