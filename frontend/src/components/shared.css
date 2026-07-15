@@ -16,6 +16,19 @@
 
 /* ── Data table card ──────────────────────────── */
 .data-card { background: var(--surface-card); border: 0.5px solid var(--border); border-radius: 8px; }
+.list-page { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.list-page .page-header,
+.list-page .summary-cards,
+.list-page .error-banner { flex-shrink: 0; }
+.app-main:has(.list-page) { overflow: hidden; }
+.record-list-card { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.record-list-scroll { flex: 1; min-height: 0; overflow: auto; }
+.record-list-scroll .data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface-subtle);
+}
 
 .toolbar {
   padding: 10px 16px; border-bottom: 0.5px solid var(--border);

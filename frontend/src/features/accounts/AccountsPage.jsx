@@ -32,7 +32,7 @@ export default function AccountsPage() {
   }
 
   return (
-    <div>
+    <div className="list-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Account registrations</h1>
@@ -46,38 +46,40 @@ export default function AccountsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="data-card">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Business name</th>
-              <th>Account number</th>
-              <th>Registration date</th>
-              <th>Status</th>
-              <th style={{ width: 110 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={5} className="empty-state">Loading…</td></tr>
-            ) : accounts.length === 0 ? (
-              <tr><td colSpan={5} className="empty-state">No accounts registered yet.</td></tr>
-            ) : accounts.map(a => (
-              <tr key={a.id}>
-                <td className="col-name">{a.business_name}</td>
-                <td className="col-muted">{a.account_number || "—"}</td>
-                <td className="col-muted">{fmtDate(a.registration_date)}</td>
-                <td className="col-muted">{a.status || "—"}</td>
-                <td>
-                  <div className="row-actions">
-                    <button className="row-action-btn" onClick={() => setEditing(a)}>Edit</button>
-                    <button className="row-action-btn danger" onClick={() => handleDelete(a.id)}>Delete</button>
-                  </div>
-                </td>
+      <div className="data-card record-list-card">
+        <div className="record-list-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Business name</th>
+                <th>Account number</th>
+                <th>Registration date</th>
+                <th>Status</th>
+                <th style={{ width: 110 }}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={5} className="empty-state">Loading…</td></tr>
+              ) : accounts.length === 0 ? (
+                <tr><td colSpan={5} className="empty-state">No accounts registered yet.</td></tr>
+              ) : accounts.map(a => (
+                <tr key={a.id}>
+                  <td className="col-name">{a.business_name}</td>
+                  <td className="col-muted">{a.account_number || "—"}</td>
+                  <td className="col-muted">{fmtDate(a.registration_date)}</td>
+                  <td className="col-muted">{a.status || "—"}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="row-action-btn" onClick={() => setEditing(a)}>Edit</button>
+                      <button className="row-action-btn danger" onClick={() => handleDelete(a.id)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <div className="table-footer">
           <span className="table-footer-label">{accounts.length} account{accounts.length !== 1 ? "s" : ""}</span>
         </div>

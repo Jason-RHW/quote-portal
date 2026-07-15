@@ -361,6 +361,7 @@ def update_request_from_row(db, row: dict[str, Any], create_missing_sdrs: bool) 
         return None
 
     brand_ids = values.pop("brand_ids")
+    values.pop("address_verification_status", None)
     previous_status = req.status.value if req.status else None
     changed = False
     for field, value in values.items():

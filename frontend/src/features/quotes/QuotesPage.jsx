@@ -117,7 +117,7 @@ export default function QuotesPage() {
   const brandFilterOptions = [{ value: "", label: "All brands" }, ...BRANDS.map(b => ({ value: b, label: b }))];
 
   return (
-    <div>
+    <div className="list-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Quotes</h1>
@@ -140,7 +140,7 @@ export default function QuotesPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="data-card">
+      <div className="data-card record-list-card">
 
         {/* Row 1: status tabs + search */}
         <div className="toolbar">
@@ -172,43 +172,45 @@ export default function QuotesPage() {
           {hasFilters && <button className="filter-clear-btn" onClick={clearFilters}>Clear filters</button>}
         </div>
 
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Business name</th>
-              <th>Requested by</th>
-              <th>Value</th>
-              <th>Brands</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>SDR</th>
-              <th style={{ width: 110 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={8} className="empty-state">Loading…</td></tr>
-            ) : visible.length === 0 ? (
-              <tr><td colSpan={8} className="empty-state">No quotes match this view.</td></tr>
-            ) : visible.map(q => (
-              <tr key={q.id} style={{ cursor:"pointer" }} onClick={() => setSelected(q)}>
-                <td className="col-name">{q.business_name}</td>
-                <td>{q.requested_by||"—"}</td>
-                <td>{fmt$(q.quote_value)}</td>
-                <td className="col-brands"><BrandChips lineItems={q.line_items||[]} /></td>
-                <td>{fmtDate(q.date_requested)}</td>
-                <td><StatusBadge status={q.status} /></td>
-                <td style={{fontSize:12}}>{q.associated_sdr||"—"}</td>
-                <td onClick={e => e.stopPropagation()}>
-                  <div className="row-actions">
-                    <button className="row-action-btn" onClick={() => setEditing(q)}>Edit</button>
-                    <button className="row-action-btn danger" onClick={() => handleDelete(q.id)}>Delete</button>
-                  </div>
-                </td>
+        <div className="record-list-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Business name</th>
+                <th>Requested by</th>
+                <th>Value</th>
+                <th>Brands</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>SDR</th>
+                <th style={{ width: 110 }}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} className="empty-state">Loading…</td></tr>
+              ) : visible.length === 0 ? (
+                <tr><td colSpan={8} className="empty-state">No quotes match this view.</td></tr>
+              ) : visible.map(q => (
+                <tr key={q.id} style={{ cursor:"pointer" }} onClick={() => setSelected(q)}>
+                  <td className="col-name">{q.business_name}</td>
+                  <td>{q.requested_by||"—"}</td>
+                  <td>{fmt$(q.quote_value)}</td>
+                  <td className="col-brands"><BrandChips lineItems={q.line_items||[]} /></td>
+                  <td>{fmtDate(q.date_requested)}</td>
+                  <td><StatusBadge status={q.status} /></td>
+                  <td style={{fontSize:12}}>{q.associated_sdr||"—"}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <div className="row-actions">
+                      <button className="row-action-btn" onClick={() => setEditing(q)}>Edit</button>
+                      <button className="row-action-btn danger" onClick={() => handleDelete(q.id)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="table-footer">
           <span className="table-footer-label">

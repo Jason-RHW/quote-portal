@@ -87,7 +87,7 @@ export default function POsPage() {
   const sdrFilterOptions = [{ value: "", label: "All SDRs" }, ...sdrOptions.map(s => ({ value: s, label: s }))];
 
   return (
-    <div>
+    <div className="list-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Purchase orders</h1>
@@ -106,7 +106,7 @@ export default function POsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="data-card">
+      <div className="data-card record-list-card">
 
         {/* Toolbar: search */}
         <div className="toolbar">
@@ -131,37 +131,39 @@ export default function POsPage() {
           {hasFilters && <button className="filter-clear-btn" onClick={clearFilters}>Clear filters</button>}
         </div>
 
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Business name</th>
-              <th>PO value</th>
-              <th>Date of PO</th>
-              <th>SDR</th>
-              <th style={{ width:110 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={5} className="empty-state">Loading…</td></tr>
-            ) : visible.length === 0 ? (
-              <tr><td colSpan={5} className="empty-state">No purchase orders match this view.</td></tr>
-            ) : visible.map(p => (
-              <tr key={p.id}>
-                <td className="col-name">{p.business_name}</td>
-                <td>{fmt$(p.po_value)}</td>
-                <td>{fmtDate(p.date_of_po)}</td>
-                <td style={{fontSize:12}}>{p.associated_sdr||"—"}</td>
-                <td>
-                  <div className="row-actions">
-                    <button className="row-action-btn" onClick={() => setEditing(p)}>Edit</button>
-                    <button className="row-action-btn danger" onClick={() => handleDelete(p.id)}>Delete</button>
-                  </div>
-                </td>
+        <div className="record-list-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Business name</th>
+                <th>PO value</th>
+                <th>Date of PO</th>
+                <th>SDR</th>
+                <th style={{ width:110 }}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={5} className="empty-state">Loading…</td></tr>
+              ) : visible.length === 0 ? (
+                <tr><td colSpan={5} className="empty-state">No purchase orders match this view.</td></tr>
+              ) : visible.map(p => (
+                <tr key={p.id}>
+                  <td className="col-name">{p.business_name}</td>
+                  <td>{fmt$(p.po_value)}</td>
+                  <td>{fmtDate(p.date_of_po)}</td>
+                  <td style={{fontSize:12}}>{p.associated_sdr||"—"}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="row-action-btn" onClick={() => setEditing(p)}>Edit</button>
+                      <button className="row-action-btn danger" onClick={() => handleDelete(p.id)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="table-footer">
           <span className="table-footer-label">

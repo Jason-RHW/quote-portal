@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { brandStyle } from "../../config/brandColors";
 import SampleDetailDrawer from "./SampleDetailDrawer";
@@ -137,9 +137,9 @@ export default function SamplesPage() {
   const sdrsById = useMemo(() => Object.fromEntries(sdrs.map(s => [s.id, s])), [sdrs]);
   const activeSdrs = useMemo(() => sdrs.filter(s => s.active), [sdrs]);
 
-  async function reload() {
-    setLoading(true);
-    setError(null);
+  const reload = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError(null);
     try {
       const [reqs, allReqs, brandList, sdrList] = await Promise.all([
         api.samples.list({
@@ -156,13 +156,17 @@ export default function SamplesPage() {
       setBrands(brandList);
       setSdrs(sdrList);
     } catch (e) {
-      setError(e.message);
+      if (!silent) setError(e.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }
+  }, [statusFilter, brandFilter, addrFilter]);
 
-  useEffect(() => { reload(); }, [statusFilter, sdrFilter, brandFilter, addrFilter]); // eslint-disable-line
+  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    const id = window.setInterval(() => reload({ silent: true }), 30000);
+    return () => window.clearInterval(id);
+  }, [reload]);
   useEffect(() => { setPage(1); clearSelection(); }, [statusFilter, sdrFilter, brandFilter, addrFilter, dateFilter, dateRange.from, dateRange.to, search]);
 
   const visible = useMemo(() => {
