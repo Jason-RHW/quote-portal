@@ -115,14 +115,28 @@ def find_contact_by_email(email: Optional[str]) -> Optional[str]:
     return results[0]["id"] if results else None
 
 
-def find_contact_by_phone(phone: Optional[str]) -> Optional[str]:
+def find_contact_by_phone_and_name(phone: Optional[str], full_name: Optional[str]) -> Optional[str]:
+    """Requires phone AND name to both match the same contact — phone alone
+    is too easy to collide on (shared/placeholder numbers in older CRM data),
+    so this is deliberately stricter than a phone-only lookup."""
     clean_phone = _clean_phone(phone)
-    if not clean_phone:
+    if not clean_phone or not full_name:
+        return None
+    first, last = _split_name(full_name)
+    if not first:
         return None
     payload = {
         "filterGroups": [
-            {"filters": [{"propertyName": "phone", "operator": "EQ", "value": clean_phone}]},
-            {"filters": [{"propertyName": "mobilephone", "operator": "EQ", "value": clean_phone}]},
+            {"filters": [
+                {"propertyName": "phone", "operator": "EQ", "value": clean_phone},
+                {"propertyName": "firstname", "operator": "EQ", "value": first},
+                {"propertyName": "lastname", "operator": "EQ", "value": last},
+            ]},
+            {"filters": [
+                {"propertyName": "mobilephone", "operator": "EQ", "value": clean_phone},
+                {"propertyName": "firstname", "operator": "EQ", "value": first},
+                {"propertyName": "lastname", "operator": "EQ", "value": last},
+            ]},
         ],
         "properties": ["email", "phone", "mobilephone", "firstname", "lastname"],
         "limit": 1,
@@ -170,12 +184,11 @@ def create_contact(email: Optional[str], phone: Optional[str], full_name: Option
 
 
 def find_or_create_contact(email: Optional[str], phone: Optional[str], full_name: Optional[str]) -> str:
-    """a) Match by email, then phone, then name; create a new contact
-    (with phone + email set) if none of those match."""
+    """a) Match by email, then by phone+name together; create a new contact
+    (with phone + email set) if neither matches."""
     contact_id = (
         find_contact_by_email(email)
-        or find_contact_by_phone(phone)
-        or find_contact_by_name(full_name)
+        or find_contact_by_phone_and_name(phone, full_name)
     )
     if contact_id:
         return contact_id
