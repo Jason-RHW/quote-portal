@@ -434,8 +434,10 @@ class SampleRequestOut(BaseModel):
     address_verification_source_url: Optional[str] = None
     address_verified_by: Optional[str] = None
     address_verified_at: Optional[datetime] = None
+    hubspot_requested_synced: bool
     hubspot_sent_synced: bool
     hubspot_delivered_synced: bool
+    hubspot_sync_error: Optional[str] = None
     archived_at: Optional[datetime] = None
     requested_date: date
     created_at: datetime

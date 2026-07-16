@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services import sdr_kpi_ingest_service
+from app.services import sample_service
 
 router = APIRouter(prefix="/api/cron", tags=["cron"])
 PST = ZoneInfo("America/Los_Angeles")
@@ -44,3 +45,12 @@ def ingest_sdr_performance(target_date: str = None, db: Session = Depends(get_db
     else:
         d = (datetime.now(PST) - timedelta(days=1)).date()
     return sdr_kpi_ingest_service.ingest_day(db, d)
+
+
+@router.get("/sync-requested-samples", dependencies=[Depends(verify_cron_secret)])
+def sync_requested_samples(db: Session = Depends(get_db)):
+    """Safety net for the SDR form's HubSpot sync: the submit endpoint fires
+    it via BackgroundTasks so the SDR never waits, but a Vercel function can
+    be frozen right after the response is sent, so anything that didn't
+    finish (or hit a transient HubSpot error) is retried here."""
+    return sample_service.batch_sync_requested_to_hubspot(db)

@@ -1,5 +1,5 @@
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -233,5 +233,15 @@ def form_fields_public(db: Session = Depends(get_db), _=Depends(verify_sdr_token
 
 
 @public_router.post("/samples/submit", response_model=SampleRequestOut)
-def submit(data: SampleRequestSubmit, db: Session = Depends(get_db), _=Depends(verify_sdr_token)):
-    return sample_service.submit_sample_request(db, data)
+def submit(
+    data: SampleRequestSubmit,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _=Depends(verify_sdr_token),
+):
+    req = sample_service.submit_sample_request(db, data)
+    # HubSpot matching/creation runs after the response is sent so the SDR
+    # doesn't wait on it; the cron-driven batch_sync_requested_to_hubspot
+    # safety net catches anything this doesn't finish (see cron.py).
+    background_tasks.add_task(sample_service.run_requested_sync_in_background, req.id)
+    return req

@@ -22,6 +22,7 @@ from app.schemas.schemas import (
     SampleRequestStatusChange, BrandCreate, BrandUpdate, SdrCreate, SdrUpdate,
     FormFieldCreate, FormFieldUpdate,
 )
+from app.database import SessionLocal
 from app.services import address_verification_service as verify_svc
 from app.services import hubspot_service
 
@@ -173,6 +174,67 @@ def submit_sample_request(db: Session, data: SampleRequestSubmit) -> SampleReque
     db.refresh(req)
     req.brand_ids = []
     return _normalize_request_ids(req)
+
+
+def sync_requested_to_hubspot(db: Session, request_id: str) -> None:
+    """Best-effort — a failed/unconfigured HubSpot sync must never surface
+    to the SDR, since it always runs after the form response has already
+    been sent. Mirrors _run_verification_best_effort's silent-fail shape,
+    but persists the error message so admins/cron can see and retry it."""
+    req = db.query(SampleRequest).filter(SampleRequest.id == request_id).first()
+    if not req or req.hubspot_requested_synced:
+        return
+    try:
+        result = hubspot_service.sync_sample_requested(req)
+    except hubspot_service.HubSpotSyncError as e:
+        req.hubspot_sync_error = str(e)
+        _log_event(
+            db, request_id, req.status.value if req.status else None,
+            req.status.value if req.status else "hubspot_sync_failed",
+            changed_by="HubSpot sync", note=f"HubSpot requested-stage sync failed: {e}",
+        )
+        db.commit()
+        return
+    req.hubspot_contact_id = result.contact_id or req.hubspot_contact_id
+    req.hubspot_company_id = result.company_id or req.hubspot_company_id
+    req.hubspot_requested_synced = True
+    req.hubspot_sync_error = None
+    db.commit()
+
+
+def run_requested_sync_in_background(request_id: str) -> None:
+    """Entry point for FastAPI BackgroundTasks. The request-scoped session
+    from Depends(get_db) closes as soon as the response is sent, so this
+    opens its own session rather than reusing that one."""
+    db = SessionLocal()
+    try:
+        sync_requested_to_hubspot(db, request_id)
+    finally:
+        db.close()
+
+
+def batch_sync_requested_to_hubspot(db: Session) -> dict:
+    """Safety-net retry, meant to be called from a cron job: catches any
+    'requested' rows the BackgroundTasks pass missed or failed on (e.g. a
+    Vercel function frozen right after the response, or a transient
+    HubSpot API error)."""
+    ids = [
+        r.id for r in db.query(SampleRequest).filter(
+            SampleRequest.status == SampleRequestStatus.requested,
+            SampleRequest.hubspot_requested_synced.is_(False),
+            SampleRequest.archived_at.is_(None),
+        ).all()
+    ]
+    synced = 0
+    failed = 0
+    for rid in ids:
+        sync_requested_to_hubspot(db, rid)
+        req = db.query(SampleRequest).filter(SampleRequest.id == rid).first()
+        if req and req.hubspot_requested_synced:
+            synced += 1
+        else:
+            failed += 1
+    return {"attempted": len(ids), "synced": synced, "failed": failed}
 
 
 # ── Create (admin manual add — ungated dates/status, for backfill) ──

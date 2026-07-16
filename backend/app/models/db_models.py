@@ -245,11 +245,13 @@ class SampleRequest(Base):
     address_verified_by = Column(String, nullable=True)
     address_verified_at = Column(DateTime(timezone=True), nullable=True)
 
-    # HubSpot sync (stubbed — not wired up yet)
+    # HubSpot sync
     hubspot_contact_id = Column(String, nullable=True)
     hubspot_company_id = Column(String, nullable=True)
+    hubspot_requested_synced = Column(Boolean, nullable=False, default=False)
     hubspot_sent_synced = Column(Boolean, nullable=False, default=False)
     hubspot_delivered_synced = Column(Boolean, nullable=False, default=False)
+    hubspot_sync_error = Column(String, nullable=True)
 
     archived_at = Column(DateTime(timezone=True), nullable=True)  # soft delete
     requested_date = Column(Date, nullable=False)  # backfill-accurate date — see requested_date note in migration
