@@ -54,6 +54,7 @@ function BrandsTab({ brands, reload }) {
 
 function SdrsTab({ sdrs, reload }) {
   const [newName, setNewName] = useState("");
+  const [newOwnerId, setNewOwnerId] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function toggleActive(sdr) {
@@ -61,12 +62,20 @@ function SdrsTab({ sdrs, reload }) {
     reload();
   }
 
+  async function saveOwnerId(sdr, value) {
+    const trimmed = value.trim();
+    if (trimmed === (sdr.hubspot_owner_id || "")) return;
+    await api.sdrs.update(sdr.id, { hubspot_owner_id: trimmed || null });
+    reload();
+  }
+
   async function addSdr() {
     if (!newName.trim()) return;
     setSaving(true);
     try {
-      await api.sdrs.create({ full_name: newName.trim(), active: true });
+      await api.sdrs.create({ full_name: newName.trim(), active: true, hubspot_owner_id: newOwnerId.trim() || null });
       setNewName("");
+      setNewOwnerId("");
       reload();
     } finally {
       setSaving(false);
@@ -74,16 +83,24 @@ function SdrsTab({ sdrs, reload }) {
   }
 
   return (
-    <div className="brand-list roster-list" style={{ maxWidth: 520 }}>
+    <div className="brand-list roster-list" style={{ maxWidth: 640 }}>
       {sdrs.map(s => (
         <div className="brand-row" key={s.id}>
           <span className="sdr-avatar">{s.full_name.slice(0, 1).toUpperCase()}</span>
           <span className={`name ${s.active ? "" : "inactive"}`} style={{ flex: 1 }}>{s.full_name}{!s.active && " (inactive)"}</span>
+          <input
+            placeholder="HubSpot Owner ID"
+            title="HubSpot user/owner ID — sets the contact/company owner in HubSpot when this SDR submits a sample request"
+            defaultValue={s.hubspot_owner_id || ""}
+            onBlur={e => saveOwnerId(s, e.target.value)}
+            style={{ width: 150 }}
+          />
           <div className={`switch ${s.active ? "on" : ""}`} onClick={() => toggleActive(s)}><div className="knob" /></div>
         </div>
       ))}
       <div className="add-brand-row">
         <input placeholder="New SDR name..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === "Enter" && addSdr()} />
+        <input placeholder="HubSpot Owner ID (optional)" value={newOwnerId} onChange={e => setNewOwnerId(e.target.value)} onKeyDown={e => e.key === "Enter" && addSdr()} style={{ width: 170 }} />
         <button className="btn-secondary" onClick={addSdr} disabled={saving}>{saving ? "Adding…" : "Add SDR"}</button>
       </div>
     </div>

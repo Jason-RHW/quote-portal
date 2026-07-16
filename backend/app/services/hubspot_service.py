@@ -245,6 +245,33 @@ def find_or_create_company(
     return create_company(business_name, state, address_line, city, zip_code)
 
 
+def get_owner_id(object_type: str, object_id: str) -> Optional[str]:
+    result = _request(
+        "GET",
+        f"/crm/v3/objects/{object_type}/{object_id}",
+        params={"properties": "hubspot_owner_id"},
+    )
+    return result.get("properties", {}).get("hubspot_owner_id")
+
+
+def update_contact_owner(contact_id: str, owner_id: str) -> bool:
+    _request(
+        "PATCH",
+        f"/crm/v3/objects/contacts/{contact_id}",
+        json={"properties": {"hubspot_owner_id": owner_id}},
+    )
+    return True
+
+
+def update_company_owner(company_id: str, owner_id: str) -> bool:
+    _request(
+        "PATCH",
+        f"/crm/v3/objects/companies/{company_id}",
+        json={"properties": {"hubspot_owner_id": owner_id}},
+    )
+    return True
+
+
 def set_primary_company_association(contact_id: str, company_id: str) -> bool:
     """c) Associate the company to the contact as its primary company,
     regardless of whether either side was just matched or just created."""
@@ -449,16 +476,25 @@ def add_contact_to_delivered_list(contact_id: str, delivered_date: date) -> bool
     return add_contact_to_list(list_id, contact_id)
 
 
-def sync_sample_requested(req: SampleRequest) -> HubSpotSyncResult:
+def sync_sample_requested(req: SampleRequest, sdr_owner_id: Optional[str] = None) -> HubSpotSyncResult:
     """Runs right after a sample request is submitted: match-or-create the
-    contact and company, associate the company as primary, and push both
-    to the 'Sample Requested' lifecycle stage — steps a-d from the SDR
-    form's HubSpot integration spec."""
+    contact and company, associate the company as primary, push both to
+    the 'Sample Requested' lifecycle stage, and (if the submitting SDR has
+    a HubSpot owner ID configured) reassign both records' owner to that
+    SDR — even if they already belonged to someone else in HubSpot, so
+    ownership always reflects who's actively working the account. Skips
+    the write if the current owner already matches, to avoid a no-op PATCH.
+    Steps a-d from the SDR form's HubSpot integration spec."""
     contact_id = find_or_create_contact(req.contact_email, req.contact_phone, req.contact_name)
     company_id = find_or_create_company(req.business_name, req.state, req.address_line, req.city, req.zip_code)
     set_primary_company_association(contact_id, company_id)
     update_contact_requested_lifecycle_stage(contact_id)
     update_company_requested_lifecycle_stage(company_id)
+    if sdr_owner_id:
+        if get_owner_id("contacts", contact_id) != sdr_owner_id:
+            update_contact_owner(contact_id, sdr_owner_id)
+        if get_owner_id("companies", company_id) != sdr_owner_id:
+            update_company_owner(company_id, sdr_owner_id)
     return HubSpotSyncResult(contact_id=contact_id, company_id=company_id)
 
 

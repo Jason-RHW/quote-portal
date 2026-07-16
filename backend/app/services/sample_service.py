@@ -184,8 +184,12 @@ def sync_requested_to_hubspot(db: Session, request_id: str) -> None:
     req = db.query(SampleRequest).filter(SampleRequest.id == request_id).first()
     if not req or req.hubspot_requested_synced:
         return
+    sdr_owner_id = None
+    if req.sdr_id:
+        sdr = db.query(Sdr).filter(Sdr.id == req.sdr_id).first()
+        sdr_owner_id = sdr.hubspot_owner_id if sdr else None
     try:
-        result = hubspot_service.sync_sample_requested(req)
+        result = hubspot_service.sync_sample_requested(req, sdr_owner_id)
     except hubspot_service.HubSpotSyncError as e:
         req.hubspot_sync_error = str(e)
         _log_event(

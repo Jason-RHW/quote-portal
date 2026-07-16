@@ -251,6 +251,7 @@ class SdrOut(BaseModel):
     id: str
     full_name: str
     active: bool
+    hubspot_owner_id: Optional[str] = None
 
     _stringify_ids = field_validator("id", mode="before")(stringify_uuid)
 
@@ -261,11 +262,13 @@ class SdrOut(BaseModel):
 class SdrCreate(BaseModel):
     full_name: str
     active: bool = True
+    hubspot_owner_id: Optional[str] = None
 
 
 class SdrUpdate(BaseModel):
     full_name: Optional[str] = None
     active: Optional[bool] = None
+    hubspot_owner_id: Optional[str] = None
 
 
 class BrandBase(BaseModel):

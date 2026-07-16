@@ -200,6 +200,7 @@ class Sdr(Base):
     id = Column(String, primary_key=True)
     full_name = Column(String, nullable=False, unique=True)
     active = Column(Boolean, nullable=False, default=True)
+    hubspot_owner_id = Column(String, nullable=True)  # HubSpot user/owner ID, set manually per SDR
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
