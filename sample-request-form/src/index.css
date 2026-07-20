@@ -94,3 +94,27 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .ms-option:hover { background: var(--surface-subtle); }
 .ms-option input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--enterprise-blue); flex-shrink: 0; }
 .ms-option label { flex: 1; cursor: pointer; }
+
+/* Inline checkbox list (Size, Color, Employees using gloves, Daily glove changes) */
+/* Selectors below are scoped under their grid/group parent (not just the bare
+   class) so they out-specificity ".form-field label { display: block }" —
+   these are all <label> elements nested inside a .form-field div, so the
+   bare class alone loses that cascade fight and silently reverts to block,
+   breaking the flex alignment entirely. */
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.checkbox-group .checkbox-option { display: flex; align-items: center; justify-content: center; gap: 7px; border: 0.5px solid #CBD5E1; border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; background: #fff; user-select: none; }
+.checkbox-option:hover { border-color: #94A3B8; }
+.checkbox-option.checked { border-color: var(--enterprise-blue); background: var(--status-fulfilled-bg); color: var(--status-fulfilled-text); font-weight: 500; }
+.checkbox-option input[type=checkbox] { width: 14px; height: 14px; accent-color: var(--enterprise-blue); flex-shrink: 0; }
+.color-swatch { width: 14px; height: 14px; border-radius: 3px; border: 0.5px solid rgba(0,0,0,.15); flex-shrink: 0; }
+
+/* Glove type: brand icon / product photo cards with checkboxes */
+.product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 520px) { .product-grid { grid-template-columns: repeat(2, 1fr); } }
+.product-grid .product-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; border: 0.5px solid #CBD5E1; border-radius: 8px; padding: 12px 10px 10px; cursor: pointer; background: #fff; text-align: center; }
+.product-card:hover { border-color: #94A3B8; }
+.product-card.checked { border-color: var(--enterprise-blue); box-shadow: 0 0 0 2px rgba(30,64,175,.15); }
+.product-card img { width: 100%; height: 72px; object-fit: contain; }
+.product-card .product-title-row { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.product-card input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--enterprise-blue); flex-shrink: 0; }
+.product-title { font-size: 12px; font-weight: 500; line-height: 1.3; }

@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sample-request-form",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174"],
+      "cwd": "sample-request-form",
+      "env": { "VITE_API_URL": "http://127.0.0.1:8000/api" },
+      "port": 5174
+    }
+  ]
+}

@@ -36,6 +36,94 @@ function MultiSelect({ options, value, onChange }) {
   );
 }
 
+// ── Single- or multi-select checkbox list, shown inline (no dropdown) —
+// used for Size (multi) and the Employees/Daily-changes range fields (single) ──
+function CheckboxGroup({ options, value, onChange, multiple }) {
+  const selected = multiple ? (value || []) : value;
+  function toggle(opt) {
+    if (multiple) {
+      onChange(selected.includes(opt) ? selected.filter(v => v !== opt) : [...selected, opt]);
+    } else {
+      onChange(selected === opt ? "" : opt);
+    }
+  }
+  return (
+    <div className="checkbox-group">
+      {options.map(opt => {
+        const checked = multiple ? selected.includes(opt) : selected === opt;
+        return (
+          <label className={`checkbox-option ${checked ? "checked" : ""}`} key={opt}>
+            <input type="checkbox" checked={checked} onChange={() => toggle(opt)} />
+            <span>{opt}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Glove type: image + title cards with checkboxes, multi-select ──
+const GLOVE_PRODUCT_IMAGES = {
+  "TitanFlex (Heavy-duty Nitrile)": "/products/titanflex-logo.png",
+  "SwiftLite (Food-handling Vinyl)": "/products/swiftlite-logo.png",
+  "SwiftGrip (Colorful Nitrile)": "/products/swiftgrip-logo.png",
+  "Schneider (Exam-grade Nitrile)": "/products/schneider-logo.png",
+  "Work Gloves (Enhanced Gripping)": "/products/work-gloves.jpg",
+  "Cut-resistant Gloves (Cut Hazard Protection)": "/products/cut-resistant-gloves.jpg",
+};
+
+function ProductCheckboxGrid({ options, value, onChange }) {
+  const selected = value || [];
+  function toggle(opt) {
+    onChange(selected.includes(opt) ? selected.filter(v => v !== opt) : [...selected, opt]);
+  }
+  return (
+    <div className="product-grid">
+      {options.map(opt => {
+        const checked = selected.includes(opt);
+        const img = GLOVE_PRODUCT_IMAGES[opt];
+        return (
+          <label className={`product-card ${checked ? "checked" : ""}`} key={opt}>
+            {img && <img src={img} alt={opt} />}
+            <span className="product-title-row">
+              <input type="checkbox" checked={checked} onChange={() => toggle(opt)} />
+              <span className="product-title">{opt}</span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Color: direct checkbox display (no dropdown) with a swatch per option ──
+const COLOR_SWATCHES = {
+  Black: "#111827", Blue: "#1E40AF", Burgundy: "#7B1E3A", "Cherry Blossom": "#FFB7C5",
+  Clear: "#FFFFFF", Fuchsia: "#D6249F", Green: "#15803D", Orange: "#F97316",
+  White: "#FFFFFF", Yellow: "#EAB308",
+};
+
+function ColorCheckboxGroup({ options, value, onChange }) {
+  const selected = value || [];
+  function toggle(opt) {
+    onChange(selected.includes(opt) ? selected.filter(v => v !== opt) : [...selected, opt]);
+  }
+  return (
+    <div className="checkbox-group">
+      {options.map(opt => {
+        const checked = selected.includes(opt);
+        return (
+          <label className={`checkbox-option ${checked ? "checked" : ""}`} key={opt}>
+            <input type="checkbox" checked={checked} onChange={() => toggle(opt)} />
+            <span className="color-swatch" style={{ background: COLOR_SWATCHES[opt] || "#CBD5E1" }} />
+            <span>{opt}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── City/State autocomplete input ──
 function Autocomplete({ value, onChange, onSelect, matcher, placeholder, renderOption }) {
   const [open, setOpen] = useState(false);
@@ -102,7 +190,18 @@ function LoginGate({ onLoggedIn }) {
   );
 }
 
+const CHECKBOX_GROUP_FIELD_KEYS = new Set(["size", "employee_count", "daily_changes"]);
+
 function CustomField({ field, value, onChange }) {
+  if (field.field_key === "glove_type") {
+    return <ProductCheckboxGrid options={field.options || []} value={value || []} onChange={onChange} />;
+  }
+  if (field.field_key === "color") {
+    return <ColorCheckboxGroup options={field.options || []} value={value || []} onChange={onChange} />;
+  }
+  if (CHECKBOX_GROUP_FIELD_KEYS.has(field.field_key)) {
+    return <CheckboxGroup options={field.options || []} value={value} onChange={onChange} multiple={!!field.multiple} />;
+  }
   if (field.field_type === "dropdown" && field.multiple) {
     return <MultiSelect options={field.options || []} value={value || []} onChange={onChange} />;
   }
@@ -271,7 +370,7 @@ function RequestForm() {
             <p className="form-section-label">Glove specs</p>
             <div className="form-grid form-grid-2">
               {gloveFields.map(field => {
-                const full = field.multiple || field.field_type === "textarea";
+                const full = field.multiple || field.field_type === "textarea" || CHECKBOX_GROUP_FIELD_KEYS.has(field.field_key);
                 return (
                   <div className={`form-field ${full ? "full" : ""}`} key={field.field_key}>
                     <label>{field.label}{field.required && " *"}</label>

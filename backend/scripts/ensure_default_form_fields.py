@@ -27,18 +27,18 @@ DEFAULT_FIELDS = [
         "Glove type",
         FormFieldType.dropdown,
         [
-            "Economy Nitrile (Cost-Effective)",
-            "Premium Nitrile (Enhanced Durability)",
-            "Industrial Nitrile (Heavy-Duty Use)",
-            "Food-Grade Vinyl (Food Handling)",
-            "Work Gloves (Enhanced Grip) - Reusable",
-            "Cut-Resistant Gloves - Reusable",
+            "TitanFlex (Heavy-duty Nitrile)",
+            "SwiftLite (Food-handling Vinyl)",
+            "SwiftGrip (Colorful Nitrile)",
+            "Schneider (Exam-grade Nitrile)",
+            "Work Gloves (Enhanced Gripping)",
+            "Cut-resistant Gloves (Cut Hazard Protection)",
         ],
         True,
         True,
         0,
     ),
-    ("size", "Size", FormFieldType.dropdown, ["XS", "S", "M", "L", "XL", "XXL"], False, True, 1),
+    ("size", "Size", FormFieldType.dropdown, ["XS", "S", "M", "L", "XL", "XXL"], True, True, 1),
     (
         "color",
         "Color",
@@ -48,8 +48,24 @@ DEFAULT_FIELDS = [
         False,
         2,
     ),
-    ("employee_count", "# Employees using gloves", FormFieldType.number, None, False, False, 3),
-    ("daily_changes", "Daily glove changes / employee", FormFieldType.number, None, False, False, 4),
+    (
+        "employee_count",
+        "# Employees using gloves",
+        FormFieldType.dropdown,
+        ["1-10", "10-20", "20-50", "50-100", "100-200", "200+"],
+        False,
+        False,
+        3,
+    ),
+    (
+        "daily_changes",
+        "Daily glove changes / employee",
+        FormFieldType.dropdown,
+        ["1-5", "6-10", "11-20", "20+"],
+        False,
+        False,
+        4,
+    ),
     ("current_supplier", "Current brand / supplier", FormFieldType.text, None, False, False, 5),
     ("custom_requirement", "Custom requirement or note", FormFieldType.textarea, None, False, False, 6),
 ]
@@ -58,6 +74,10 @@ DEFAULT_FIELDS = [
 def main() -> None:
     inserted = 0
     updated = 0
+    # jsonb is a real type on Postgres, but SQLite doesn't recognize it — CAST(x AS jsonb)
+    # there falls back to NUMERIC affinity and silently zeroes out the JSON string. Only
+    # cast on Postgres; SQLite's JSON column stores the bind_processor'd string as-is.
+    options_expr = "CAST(:options AS jsonb)" if engine.dialect.name == "postgresql" else ":options"
     with engine.begin() as conn:
         for field_key, label, field_type, options, multiple, required, sort_order in DEFAULT_FIELDS:
             exists = conn.execute(
@@ -71,11 +91,11 @@ def main() -> None:
 
             conn.execute(
                 text(
-                    """
+                    f"""
                     insert into form_fields
                         (id, field_key, label, field_type, options, multiple, required, sort_order, active)
                     values
-                        (:id, :field_key, :label, :field_type, CAST(:options AS jsonb),
+                        (:id, :field_key, :label, :field_type, {options_expr},
                          :multiple, :required, :sort_order, true)
                     on conflict (field_key) do update set
                         label = excluded.label,
