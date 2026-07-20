@@ -24,6 +24,7 @@ from app.schemas.schemas import (
 )
 from app.database import SessionLocal
 from app.services import address_verification_service as verify_svc
+from app.services import email_service
 from app.services import hubspot_service
 
 
@@ -213,6 +214,36 @@ def run_requested_sync_in_background(request_id: str) -> None:
     db = SessionLocal()
     try:
         sync_requested_to_hubspot(db, request_id)
+    finally:
+        db.close()
+
+
+def send_submission_notification_email(db: Session, request_id: str) -> None:
+    """Best-effort — an unconfigured/failed SMTP send must never surface to
+    the SDR, since (like the HubSpot sync) it always runs after the form
+    response has already gone out. No retry/cron safety net for this one:
+    unlike the HubSpot sync there's no durable "unsynced" state to track,
+    it's a one-shot notification."""
+    req = db.query(SampleRequest).filter(SampleRequest.id == request_id).first()
+    if not req or not email_service.is_configured():
+        return
+    try:
+        email_service.send_sample_request_notification(db, req)
+    except email_service.EmailSendError as e:
+        _log_event(
+            db, request_id, req.status.value if req.status else None,
+            req.status.value if req.status else "email_notification_failed",
+            changed_by="Email notification", note=f"Submission notification email failed: {e}",
+        )
+        db.commit()
+
+
+def run_email_notification_in_background(request_id: str) -> None:
+    """Entry point for FastAPI BackgroundTasks — see run_requested_sync_in_background
+    for why this opens its own DB session."""
+    db = SessionLocal()
+    try:
+        send_submission_notification_email(db, request_id)
     finally:
         db.close()
 

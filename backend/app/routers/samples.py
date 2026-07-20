@@ -244,4 +244,6 @@ def submit(
     # doesn't wait on it; the cron-driven batch_sync_requested_to_hubspot
     # safety net catches anything this doesn't finish (see cron.py).
     background_tasks.add_task(sample_service.run_requested_sync_in_background, req.id)
+    # Same non-blocking, best-effort treatment for the manager notification email.
+    background_tasks.add_task(sample_service.run_email_notification_in_background, req.id)
     return req
