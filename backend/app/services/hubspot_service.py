@@ -115,52 +115,60 @@ def find_contact_by_email(email: Optional[str]) -> Optional[str]:
     return results[0]["id"] if results else None
 
 
+def _names_match(properties: dict, target_first: str, target_last: str) -> bool:
+    first_value = (properties.get("firstname") or "").strip().lower()
+    last_value = (properties.get("lastname") or "").strip().lower()
+    return first_value == target_first and last_value == target_last
+
+
 def find_contact_by_phone_and_name(phone: Optional[str], full_name: Optional[str]) -> Optional[str]:
     """Requires phone AND name to both match the same contact — phone alone
     is too easy to collide on (shared/placeholder numbers in older CRM data),
-    so this is deliberately stricter than a phone-only lookup."""
+    so this is deliberately stricter than a phone-only lookup. Name comparison
+    is case-insensitive (HubSpot's EQ operator isn't), done here in Python
+    after fetching phone-matched candidates — see find_company_by_name_and_state
+    for the same pattern applied to companies."""
     clean_phone = _clean_phone(phone)
     if not clean_phone or not full_name:
         return None
     first, last = _split_name(full_name)
     if not first:
         return None
+    target_first, target_last = first.strip().lower(), last.strip().lower()
     payload = {
         "filterGroups": [
-            {"filters": [
-                {"propertyName": "phone", "operator": "EQ", "value": clean_phone},
-                {"propertyName": "firstname", "operator": "EQ", "value": first},
-                {"propertyName": "lastname", "operator": "EQ", "value": last},
-            ]},
-            {"filters": [
-                {"propertyName": "mobilephone", "operator": "EQ", "value": clean_phone},
-                {"propertyName": "firstname", "operator": "EQ", "value": first},
-                {"propertyName": "lastname", "operator": "EQ", "value": last},
-            ]},
+            {"filters": [{"propertyName": "phone", "operator": "EQ", "value": clean_phone}]},
+            {"filters": [{"propertyName": "mobilephone", "operator": "EQ", "value": clean_phone}]},
         ],
         "properties": ["email", "phone", "mobilephone", "firstname", "lastname"],
-        "limit": 1,
+        "limit": 25,
     }
     results = _request("POST", "/crm/v3/objects/contacts/search", json=payload).get("results", [])
-    return results[0]["id"] if results else None
+    for result in results:
+        if _names_match(result.get("properties", {}), target_first, target_last):
+            return result["id"]
+    return None
 
 
 def find_contact_by_name(full_name: Optional[str]) -> Optional[str]:
+    """Case-insensitive first+last name match via a free-text query (HubSpot's
+    EQ operator is case-sensitive), same pattern as find_contact_by_phone_and_name."""
     if not full_name:
         return None
     first, last = _split_name(full_name)
     if not first:
         return None
+    target_first, target_last = first.strip().lower(), last.strip().lower()
     payload = {
-        "filterGroups": [{"filters": [
-            {"propertyName": "firstname", "operator": "EQ", "value": first},
-            {"propertyName": "lastname", "operator": "EQ", "value": last},
-        ]}],
+        "query": full_name,
         "properties": ["email", "firstname", "lastname"],
-        "limit": 1,
+        "limit": 25,
     }
     results = _request("POST", "/crm/v3/objects/contacts/search", json=payload).get("results", [])
-    return results[0]["id"] if results else None
+    for result in results:
+        if _names_match(result.get("properties", {}), target_first, target_last):
+            return result["id"]
+    return None
 
 
 def find_contact(email: Optional[str], full_name: Optional[str]) -> Optional[str]:
@@ -209,19 +217,67 @@ def find_company(business_name: Optional[str]) -> Optional[str]:
     return None
 
 
+US_STATE_ABBR_TO_NAME = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "DC": "District of Columbia",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois",
+    "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana",
+    "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota",
+    "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
+    "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon",
+    "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota",
+    "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia",
+    "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+}
+US_STATE_NAME_TO_ABBR = {name.lower(): abbr for abbr, name in US_STATE_ABBR_TO_NAME.items()}
+
+
+def _state_variants(state: Optional[str]) -> set:
+    """Both forms ('SC' and 'South Carolina') so a match works regardless of
+    which one is stored in HubSpot vs. submitted on the form, lowercased for
+    case-insensitive comparison."""
+    if not state:
+        return set()
+    s = state.strip()
+    if not s:
+        return set()
+    variants = {s.lower()}
+    full_name = US_STATE_ABBR_TO_NAME.get(s.upper())
+    if full_name:
+        variants.add(full_name.lower())
+    abbr = US_STATE_NAME_TO_ABBR.get(s.lower())
+    if abbr:
+        variants.add(abbr.lower())
+    return variants
+
+
 def find_company_by_name_and_state(business_name: Optional[str], state: Optional[str]) -> Optional[str]:
+    """Case-insensitive name match, and state matches on either abbreviation
+    or full name (in either direction) — HubSpot's search API has no
+    case-insensitive equals operator, so candidates are fetched via a
+    free-text query and the exact comparison is done here in Python."""
     if not business_name:
         return None
-    filters = [{"propertyName": "name", "operator": "EQ", "value": business_name}]
-    if state:
-        filters.append({"propertyName": "state", "operator": "EQ", "value": state})
+    target_name = business_name.strip().lower()
+    state_variants = _state_variants(state)
     payload = {
-        "filterGroups": [{"filters": filters}],
+        "query": business_name,
         "properties": ["name", "state"],
-        "limit": 1,
+        "limit": 25,
     }
     results = _request("POST", "/crm/v3/objects/companies/search", json=payload).get("results", [])
-    return results[0]["id"] if results else None
+    for result in results:
+        properties = result.get("properties", {})
+        name_value = (properties.get("name") or "").strip().lower()
+        if name_value != target_name:
+            continue
+        if state_variants:
+            state_value = (properties.get("state") or "").strip().lower()
+            if state_value not in state_variants:
+                continue
+        return result["id"]
+    return None
 
 
 def create_company(
