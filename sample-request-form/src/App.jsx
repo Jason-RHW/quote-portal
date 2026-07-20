@@ -317,21 +317,21 @@ function RequestForm() {
           <div className="form-field">
             <label>Contact full name</label>
             <input value={core.contact_name} onChange={e => setCoreField("contact_name", e.target.value)}
-              onBlur={e => { if (e.target.value.trim()) setCoreField("contact_name", formatName(e.target.value)); }} placeholder="Jane Alvarez" />
+              onBlur={e => { if (e.target.value.trim()) setCoreField("contact_name", formatName(e.target.value)); }} />
           </div>
           <div className="form-field">
             <label>Email</label>
             <input value={core.contact_email} onChange={e => setCoreField("contact_email", e.target.value)}
-              onBlur={e => { if (e.target.value.trim()) setCoreField("contact_email", formatEmail(e.target.value)); }} placeholder="jane@company.com" />
+              onBlur={e => { if (e.target.value.trim()) setCoreField("contact_email", formatEmail(e.target.value)); }} />
           </div>
           <div className="form-field">
             <label>Phone</label>
             <input value={core.contact_phone} onChange={e => setCoreField("contact_phone", e.target.value)}
-              onBlur={e => { if (e.target.value.trim()) setCoreField("contact_phone", formatPhone(e.target.value)); }} placeholder="(555) 123-4567" />
+              onBlur={e => { if (e.target.value.trim()) setCoreField("contact_phone", formatPhone(e.target.value)); }} />
           </div>
           <div className="form-field">
             <label>Business name</label>
-            <input value={core.business_name} onChange={e => setCoreField("business_name", e.target.value)} placeholder="Alvarez Manufacturing" />
+            <input value={core.business_name} onChange={e => setCoreField("business_name", e.target.value)} />
           </div>
           <div className="form-field full">
             <label>Address</label>
