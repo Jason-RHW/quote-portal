@@ -266,9 +266,17 @@ export default function SamplesPage() {
       } else if (result?.skipped) {
         alert(`HubSpot sync completed. Synced ${result.synced || 0}; skipped ${result.skipped} record${result.skipped === 1 ? "" : "s"} without eligible status/tracking.`);
       }
+    } catch (e) {
+      // A request-level failure (timeout, network drop, etc.) used to die here
+      // silently — the button would just reset with no indication anything
+      // went wrong. Records already committed server-side (this endpoint commits
+      // per-record, not once at the end) are still safe to leave as-is; re-open
+      // this dialog to retry, already-synced ones are skipped automatically.
+      alert(`HubSpot sync request failed: ${e.message}\n\nAny records already processed before the failure were saved — reopen this dialog to retry the rest.`);
     } finally {
       setBatchLoading(false);
       setBatchAction("");
+      reload();
     }
   }
 

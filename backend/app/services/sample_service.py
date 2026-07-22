@@ -410,6 +410,13 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
     2. First + last name -> contact
     3. Business name -> company
     If a contact is found, also update its associated company when available.
+
+    Commits after each record (not once at the end) so that if this times
+    out partway through a large batch — a real risk, since each record is
+    several sequential HubSpot API calls — everything processed so far is
+    still saved, rather than the whole batch's progress being lost. Already-
+    synced records are skipped so a retry after a partial failure is safe
+    and doesn't create duplicate HubSpot notes.
     """
     synced = 0
     skipped = 0
@@ -421,6 +428,12 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
             skipped += 1
             continue
         if req.status not in (SampleRequestStatus.sent, SampleRequestStatus.delivered):
+            skipped += 1
+            continue
+        if req.status == SampleRequestStatus.sent and req.hubspot_sent_synced:
+            skipped += 1
+            continue
+        if req.status == SampleRequestStatus.delivered and req.hubspot_delivered_synced:
             skipped += 1
             continue
         if req.status == SampleRequestStatus.sent and not req.tracking_number:
@@ -443,6 +456,7 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
                 changed_by="HubSpot sync",
                 note=f"HubSpot sync failed: {e}",
             )
+            db.commit()
             continue
         req.hubspot_contact_id = result.contact_id or req.hubspot_contact_id
         req.hubspot_company_id = result.company_id or req.hubspot_company_id
@@ -451,7 +465,7 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
         elif req.status == SampleRequestStatus.delivered:
             req.hubspot_delivered_synced = True
         synced += 1
-    db.commit()
+        db.commit()
     return {"synced": synced, "skipped": skipped, "failed": failed, "errors": errors}
 
 
