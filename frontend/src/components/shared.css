@@ -126,7 +126,9 @@
 .status-badge.delivered { background: var(--status-fulfilled-bg); color: var(--status-fulfilled-text); }
 .status-badge.hold { background: var(--status-stalled-bg); color: var(--status-stalled-text); }
 .status-badge.rejected { background: #FEF2F2; color: #B91C1C; }
-.status-badge.hs-synced { background: var(--status-fulfilled-bg); color: var(--status-fulfilled-text); }
+.status-badge.hs-synced,
+.status-badge.hs-delivery-synced { background: var(--status-fulfilled-bg); color: var(--status-fulfilled-text); }
+.status-badge.hs-tracking-synced { background: #ECFDF3; color: #047857; }
 .status-badge.hs-pending { background: #F1F5F9; color: var(--text-muted); }
 
 /* ── Buttons ──────────────────────────── */

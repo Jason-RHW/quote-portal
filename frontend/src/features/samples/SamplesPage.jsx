@@ -28,12 +28,12 @@ function StatusBadge({ status }) {
 function HubspotBadge({ req }) {
   if (req.status === "sent") {
     return req.hubspot_sent_synced
-      ? <span className="status-badge hs-synced">Tracking Synced</span>
+      ? <span className="status-badge hs-tracking-synced">Tracking Synced</span>
       : <span className="status-badge hs-pending">Tracking Not Synced</span>;
   }
   if (req.status === "delivered") {
     return req.hubspot_delivered_synced
-      ? <span className="status-badge hs-synced">Delivery Synced</span>
+      ? <span className="status-badge hs-delivery-synced">Delivery Synced</span>
       : <span className="status-badge hs-pending">Delivery Not Synced</span>;
   }
   return <span className="status-badge hs-pending">Not synced</span>;
@@ -84,6 +84,15 @@ function recordDate(req) {
   return req.created_at?.slice(0, 10) || req.requested_date;
 }
 
+function recordSortTime(req) {
+  const value = req.created_at || req.requested_date;
+  if (!value) return 0;
+  const timestamp = value.includes("T")
+    ? new Date(value).getTime()
+    : new Date(`${value}T00:00:00`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function isoLocal(date) {
   return [
     date.getFullYear(),
@@ -118,6 +127,7 @@ export default function SamplesPage() {
   const [addrFilter, setAddrFilter] = useState("");
   const [dateFilter, setDateFilter] = useState(null);
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
+  const [dateSort, setDateSort] = useState("desc");
   const [search, setSearch] = useState("");
 
   const [selectedIds, setSelectedIds] = useState([]);
@@ -190,8 +200,13 @@ export default function SamplesPage() {
         r.tracking_number?.toLowerCase().includes(q)
       );
     }
-    return list;
-  }, [requests, search, dateFilter, dateRange.from, dateRange.to, sdrFilter, sdrsById, brandFilter, addrFilter]);
+    return [...list].sort((a, b) => {
+      const direction = dateSort === "asc" ? 1 : -1;
+      const dateDiff = (recordSortTime(a) - recordSortTime(b)) * direction;
+      if (dateDiff !== 0) return dateDiff;
+      return String(a.id).localeCompare(String(b.id)) * direction;
+    });
+  }, [requests, search, dateFilter, dateRange.from, dateRange.to, sdrFilter, sdrsById, brandFilter, addrFilter, dateSort]);
 
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -462,7 +477,17 @@ export default function SamplesPage() {
                   <th>Status</th>
                   <th>HubSpot</th>
                   <th>Tracking #</th>
-                  <th>Date</th>
+                  <th>
+                    <button
+                      type="button"
+                      className={`date-sort-button ${dateSort}`}
+                      onClick={() => setDateSort(prev => prev === "desc" ? "asc" : "desc")}
+                      title={`Date ${dateSort === "desc" ? "newest to oldest" : "oldest to newest"}`}
+                    >
+                      <span>Date</span>
+                      <span className="date-sort-arrow" aria-hidden="true" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>

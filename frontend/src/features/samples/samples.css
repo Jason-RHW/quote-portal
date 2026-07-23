@@ -68,6 +68,32 @@
 .filter-dropdown-option.selected { background: var(--status-progress-bg); color: var(--enterprise-blue); font-weight: 600; }
 .sample-record-list-scroll { flex: 1; min-height: 0; overflow: auto; }
 .sample-record-list-table thead th { position: sticky; top: 0; z-index: 5; background: var(--surface-subtle); }
+.date-sort-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.date-sort-button:hover { color: var(--text-secondary); }
+.date-sort-arrow {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: .75;
+}
+.date-sort-button.asc .date-sort-arrow {
+  transform: rotate(180deg);
+}
 .biz-sub { color: var(--text-muted); font-size: 11.5px; margin-top: 1px; }
 .tracking { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .footer-note { margin-top: 14px; font-size: 11.5px; color: var(--text-muted); }
