@@ -252,11 +252,35 @@ def _state_variants(state: Optional[str]) -> set:
     return variants
 
 
+def find_company_by_name_and_owner(business_name: Optional[str], owner_id: Optional[str]) -> Optional[str]:
+    """Case-insensitive name match scoped to the SDR's HubSpot owner ID.
+
+    HubSpot's search API has no case-insensitive equals operator, so
+    candidates are fetched via a free-text query and the exact comparison is
+    done here in Python.
+    """
+    if not business_name:
+        return None
+    target_name = business_name.strip().lower()
+    payload = {
+        "query": business_name,
+        "properties": ["name", "hubspot_owner_id"],
+        "limit": 25,
+    }
+    results = _request("POST", "/crm/v3/objects/companies/search", json=payload).get("results", [])
+    for result in results:
+        properties = result.get("properties", {})
+        name_value = (properties.get("name") or "").strip().lower()
+        if name_value != target_name:
+            continue
+        if owner_id and str(properties.get("hubspot_owner_id") or "").strip() != str(owner_id).strip():
+            continue
+        return result["id"]
+    return None
+
+
 def find_company_by_name_and_state(business_name: Optional[str], state: Optional[str]) -> Optional[str]:
-    """Case-insensitive name match, and state matches on either abbreviation
-    or full name (in either direction) — HubSpot's search API has no
-    case-insensitive equals operator, so candidates are fetched via a
-    free-text query and the exact comparison is done here in Python."""
+    """Backward-compatible fallback for records without an SDR owner ID."""
     if not business_name:
         return None
     target_name = business_name.strip().lower()
@@ -305,10 +329,20 @@ def find_or_create_company(
     address_line: Optional[str],
     city: Optional[str],
     zip_code: Optional[str],
+    owner_id: Optional[str] = None,
 ) -> str:
-    """b) Match by business name + state; create a new company (with the
-    address written in) if none matches."""
-    company_id = find_company_by_name_and_state(business_name, state)
+    """b) Match by business name + SDR owner; create a new company (with the
+    address written in) if none matches.
+
+    If the SDR has no HubSpot owner ID configured yet, fall back to the old
+    business-name + state match so sync still works while Settings are being
+    filled in.
+    """
+    company_id = (
+        find_company_by_name_and_owner(business_name, owner_id)
+        if owner_id
+        else find_company_by_name_and_state(business_name, state)
+    )
     if company_id:
         return company_id
     return create_company(business_name, state, address_line, city, zip_code)
@@ -341,6 +375,21 @@ def update_company_owner(company_id: str, owner_id: str) -> bool:
     return True
 
 
+def _company_matches_name_and_owner(company_id: str, business_name: Optional[str], owner_id: Optional[str]) -> bool:
+    if not business_name or not owner_id:
+        return True
+    result = _request(
+        "GET",
+        f"/crm/v3/objects/companies/{company_id}",
+        params={"properties": "name,hubspot_owner_id"},
+    )
+    properties = result.get("properties", {})
+    return (
+        (properties.get("name") or "").strip().lower() == business_name.strip().lower()
+        and str(properties.get("hubspot_owner_id") or "").strip() == str(owner_id).strip()
+    )
+
+
 def set_primary_company_association(contact_id: str, company_id: str) -> bool:
     """c) Associate the company to the contact as its primary company,
     regardless of whether either side was just matched or just created."""
@@ -355,17 +404,21 @@ def set_primary_company_association(contact_id: str, company_id: str) -> bool:
     return True
 
 
-def find_company_for_contact(contact_id: str, business_name: Optional[str]) -> Optional[str]:
+def find_company_for_contact(contact_id: str, business_name: Optional[str], owner_id: Optional[str] = None) -> Optional[str]:
     try:
         results = _request("GET", f"/crm/v4/objects/contacts/{contact_id}/associations/companies").get("results", [])
-        if results:
-            return str(results[0]["toObjectId"])
+        for association in results:
+            company_id = str(association.get("toObjectId") or association.get("id") or "")
+            if company_id and _company_matches_name_and_owner(company_id, business_name, owner_id):
+                return company_id
     except HubSpotSyncError:
         pass
+    if owner_id:
+        return find_company_by_name_and_owner(business_name, owner_id)
     return find_company(business_name)
 
 
-def find_primary_company_for_contact(contact_id: str, business_name: Optional[str]) -> Optional[str]:
+def find_primary_company_for_contact(contact_id: str, business_name: Optional[str], owner_id: Optional[str] = None) -> Optional[str]:
     try:
         results = _request("GET", f"/crm/v4/objects/contacts/{contact_id}/associations/companies").get("results", [])
         company_ids = []
@@ -378,12 +431,16 @@ def find_primary_company_for_contact(contact_id: str, business_name: Optional[st
                 str(assoc_type.get("label", "")).strip().lower()
                 for assoc_type in association.get("associationTypes", [])
             ]
-            if "primary" in labels:
+            if "primary" in labels and _company_matches_name_and_owner(str(company_id), business_name, owner_id):
                 return str(company_id)
         if len(company_ids) == 1:
-            return company_ids[0]
+            only_company_id = company_ids[0]
+            if _company_matches_name_and_owner(only_company_id, business_name, owner_id):
+                return only_company_id
     except HubSpotSyncError:
         pass
+    if owner_id:
+        return find_company_by_name_and_owner(business_name, owner_id)
     return find_company(business_name)
 
 
@@ -559,7 +616,12 @@ def add_contact_to_delivered_list(contact_id: str, delivered_date: date) -> bool
     list_name = f"Sample Delivered Contacts {date.today().isoformat()}"
     list_id = get_or_create_static_contact_list(list_name)
     if not list_id:
-        raise HubSpotSyncError(f"Could not create or find HubSpot list: {list_name}")
+        # Notes and lifecycle updates happen before list membership. If HubSpot
+        # confirms the list name already exists but its search endpoint still
+        # cannot return the ID, treat the noncritical list add as skipped so the
+        # record can still be marked synced and retries do not create notes
+        # again.
+        return False
     return add_contact_to_list(list_id, contact_id)
 
 
@@ -573,7 +635,7 @@ def sync_sample_requested(req: SampleRequest, sdr_owner_id: Optional[str] = None
     the write if the current owner already matches, to avoid a no-op PATCH.
     Steps a-d from the SDR form's HubSpot integration spec."""
     contact_id = find_or_create_contact(req.contact_email, req.contact_phone, req.contact_name)
-    company_id = find_or_create_company(req.business_name, req.state, req.address_line, req.city, req.zip_code)
+    company_id = find_or_create_company(req.business_name, req.state, req.address_line, req.city, req.zip_code, sdr_owner_id)
     set_primary_company_association(contact_id, company_id)
     update_contact_requested_lifecycle_stage(contact_id)
     update_company_requested_lifecycle_stage(company_id)
@@ -585,13 +647,13 @@ def sync_sample_requested(req: SampleRequest, sdr_owner_id: Optional[str] = None
     return HubSpotSyncResult(contact_id=contact_id, company_id=company_id)
 
 
-def sync_sample(req: SampleRequest, product_sent: str) -> HubSpotSyncResult:
+def sync_sample(req: SampleRequest, product_sent: str, sdr_owner_id: Optional[str] = None) -> HubSpotSyncResult:
     if req.status == SampleRequestStatus.delivered:
-        return sync_sample_delivered(req)
-    return sync_sample_sent(req, product_sent)
+        return sync_sample_delivered(req, sdr_owner_id)
+    return sync_sample_sent(req, product_sent, sdr_owner_id)
 
 
-def sync_sample_sent(req: SampleRequest, product_sent: str) -> HubSpotSyncResult:
+def sync_sample_sent(req: SampleRequest, product_sent: str, sdr_owner_id: Optional[str] = None) -> HubSpotSyncResult:
     tracking_id = (req.tracking_number or "").strip()
     if not tracking_id:
         raise HubSpotSyncError("Tracking number is required before syncing to HubSpot.")
@@ -604,14 +666,14 @@ def sync_sample_sent(req: SampleRequest, product_sent: str) -> HubSpotSyncResult
         update_contact_lifecycle_stage(contact_id)
         update_contact_tracking_number(contact_id, tracking_id)
 
-        company_id = find_company_for_contact(contact_id, req.business_name)
+        company_id = find_company_for_contact(contact_id, req.business_name, sdr_owner_id)
         if company_id:
             create_note_for_company(company_id, product_sent, tracking_id)
             update_company_lifecycle_stage(company_id)
             update_company_tracking_number(company_id, tracking_id)
         return HubSpotSyncResult(contact_id=contact_id, company_id=company_id)
 
-    company_id = find_company(req.business_name)
+    company_id = find_company_by_name_and_owner(req.business_name, sdr_owner_id) if sdr_owner_id else find_company(req.business_name)
     if not company_id:
         raise HubSpotSyncError("No matching HubSpot contact or company was found.")
 
@@ -621,7 +683,7 @@ def sync_sample_sent(req: SampleRequest, product_sent: str) -> HubSpotSyncResult
     return HubSpotSyncResult(company_id=company_id)
 
 
-def sync_sample_delivered(req: SampleRequest) -> HubSpotSyncResult:
+def sync_sample_delivered(req: SampleRequest, sdr_owner_id: Optional[str] = None) -> HubSpotSyncResult:
     if not req.delivered_date:
         raise HubSpotSyncError("Delivered date is required before syncing delivery to HubSpot.")
 
@@ -629,7 +691,7 @@ def sync_sample_delivered(req: SampleRequest) -> HubSpotSyncResult:
     if not contact_id:
         raise HubSpotSyncError("No matching HubSpot contact was found for delivery sync.")
 
-    company_id = find_primary_company_for_contact(contact_id, req.business_name)
+    company_id = find_primary_company_for_contact(contact_id, req.business_name, sdr_owner_id)
     if not company_id:
         raise HubSpotSyncError("No matching HubSpot company was found for delivery sync.")
 

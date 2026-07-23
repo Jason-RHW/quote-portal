@@ -430,17 +430,12 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
         if req.status not in (SampleRequestStatus.sent, SampleRequestStatus.delivered):
             skipped += 1
             continue
-        # TEMPORARILY DISABLED at Jason's request while debugging why
-        # hubspot_delivered_synced isn't flipping to True even when a note
-        # shows up in HubSpot — re-enable once that's root-caused, since
-        # without this a retry can create duplicate HubSpot notes for
-        # records that already fully succeeded.
-        # if req.status == SampleRequestStatus.sent and req.hubspot_sent_synced:
-        #     skipped += 1
-        #     continue
-        # if req.status == SampleRequestStatus.delivered and req.hubspot_delivered_synced:
-        #     skipped += 1
-        #     continue
+        if req.status == SampleRequestStatus.sent and req.hubspot_sent_synced:
+            skipped += 1
+            continue
+        if req.status == SampleRequestStatus.delivered and req.hubspot_delivered_synced:
+            skipped += 1
+            continue
         if req.status == SampleRequestStatus.sent and not req.tracking_number:
             skipped += 1
             continue
@@ -448,8 +443,10 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
             skipped += 1
             continue
         product_sent = _product_sent_for(db, req)
+        sdr = db.query(Sdr).filter(Sdr.id == req.sdr_id).first() if req.sdr_id else None
+        sdr_owner_id = sdr.hubspot_owner_id if sdr else None
         try:
-            result = hubspot_service.sync_sample(req, product_sent)
+            result = hubspot_service.sync_sample(req, product_sent, sdr_owner_id)
         except hubspot_service.HubSpotSyncError as e:
             failed += 1
             errors.append({"id": rid, "business_name": req.business_name, "error": str(e)})
@@ -465,9 +462,11 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
             continue
         req.hubspot_contact_id = result.contact_id or req.hubspot_contact_id
         req.hubspot_company_id = result.company_id or req.hubspot_company_id
+        req.hubspot_sync_error = None
         if req.status == SampleRequestStatus.sent:
             req.hubspot_sent_synced = True
         elif req.status == SampleRequestStatus.delivered:
+            req.hubspot_sent_synced = True
             req.hubspot_delivered_synced = True
         synced += 1
         db.commit()

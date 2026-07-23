@@ -253,30 +253,52 @@ export default function SamplesPage() {
   }
 
   async function handleHsSyncConfirmed() {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
     setBatchLoading(true);
     setBatchAction("Syncing with HubSpot");
+    setBatchProgress({ completed: 0, total: ids.length });
+    setShowHsConfirm(false);
+    let synced = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors = [];
     try {
-      const result = await api.samples.batchHubspotSync(selectedIds);
-      setShowHsConfirm(false);
-      clearSelection();
-      reload();
-      if (result?.failed) {
-        const firstError = result.errors?.[0];
-        alert(`HubSpot sync failed for ${result.failed} record${result.failed === 1 ? "" : "s"}.${firstError ? `\n\n${firstError.business_name}: ${firstError.error}` : ""}`);
-      } else if (result?.skipped) {
-        alert(`HubSpot sync completed. Synced ${result.synced || 0}; skipped ${result.skipped} record${result.skipped === 1 ? "" : "s"} without eligible status/tracking.`);
+      for (const id of ids) {
+        try {
+          const result = await api.samples.batchHubspotSync([id]);
+          synced += result?.synced || 0;
+          skipped += result?.skipped || 0;
+          failed += result?.failed || 0;
+          if (result?.errors?.length) errors.push(...result.errors);
+        } catch (e) {
+          failed += 1;
+          const record = requests.find(r => r.id === id);
+          errors.push({ id, business_name: record?.business_name || `Record #${id}`, error: e.message });
+        } finally {
+          setBatchProgress(prev => ({ ...prev, completed: prev.completed + 1 }));
+        }
       }
-    } catch (e) {
-      // A request-level failure (timeout, network drop, etc.) used to die here
-      // silently — the button would just reset with no indication anything
-      // went wrong. Records already committed server-side (this endpoint commits
-      // per-record, not once at the end) are still safe to leave as-is; re-open
-      // this dialog to retry, already-synced ones are skipped automatically.
-      alert(`HubSpot sync request failed: ${e.message}\n\nAny records already processed before the failure were saved — reopen this dialog to retry the rest.`);
+      clearSelection();
+      await reload();
+      if (failed) {
+        const firstError = errors[0];
+        setNotice({
+          type: "warning",
+          title: "HubSpot sync finished with issues",
+          message: `Synced ${synced}, skipped ${skipped}, failed ${failed}.${firstError ? ` ${firstError.business_name}: ${firstError.error}` : ""}`,
+        });
+      } else {
+        setNotice({
+          type: "success",
+          title: "HubSpot sync complete",
+          message: `Synced ${synced}, skipped ${skipped}.`,
+        });
+      }
     } finally {
       setBatchLoading(false);
       setBatchAction("");
-      reload();
+      setBatchProgress({ completed: 0, total: 0 });
     }
   }
 
@@ -405,7 +427,7 @@ export default function SamplesPage() {
             <button onClick={handleBulkStatus}>Apply</button>
             <div className="sep" />
             <button onClick={handleAiAddressVerify} disabled={batchLoading}>AI Address Verify</button>
-            <button onClick={() => setShowHsConfirm(true)}>Sync to HubSpot</button>
+            <button onClick={() => setShowHsConfirm(true)} disabled={batchLoading}>Sync to HubSpot</button>
             {batchLoading && (
               <div className="bulk-progress">
                 <span>{batchAction || "Working"}</span>
