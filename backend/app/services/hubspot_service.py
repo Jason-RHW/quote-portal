@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import date
@@ -100,6 +101,26 @@ def _clean_phone(phone: Optional[str]) -> str:
     if not phone:
         return ""
     return "".join(ch for ch in phone if ch.isdigit() or ch == "+")
+
+
+COMPANY_SUFFIXES = {
+    "inc", "incorporated", "llc", "ltd", "limited", "corp", "corporation",
+    "co", "company", "pllc", "pc", "pa", "lp", "llp",
+}
+
+
+def _normalize_company_name(name: Optional[str]) -> str:
+    """Normalize harmless legal/punctuation differences before matching.
+
+    This intentionally is not broad fuzzy matching: owner ID still has to
+    match, and the core company words still need to match after cleanup.
+    """
+    if not name:
+        return ""
+    normalized = name.lower().replace("&", " and ")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    parts = [part for part in normalized.split() if part not in COMPANY_SUFFIXES]
+    return " ".join(parts)
 
 
 def find_contact_by_email(email: Optional[str]) -> Optional[str]:
@@ -206,14 +227,16 @@ def find_or_create_contact(email: Optional[str], phone: Optional[str], full_name
 def find_company(business_name: Optional[str]) -> Optional[str]:
     if not business_name:
         return None
+    target_name = _normalize_company_name(business_name)
     payload = {
-        "filterGroups": [{"filters": [{"propertyName": "name", "operator": "EQ", "value": business_name}]}],
+        "query": business_name,
         "properties": ["name"],
-        "limit": 1,
+        "limit": 25,
     }
     results = _request("POST", "/crm/v3/objects/companies/search", json=payload).get("results", [])
-    if results:
-        return results[0]["id"]
+    for result in results:
+        if _normalize_company_name(result.get("properties", {}).get("name")) == target_name:
+            return result["id"]
     return None
 
 
@@ -253,37 +276,41 @@ def _state_variants(state: Optional[str]) -> set:
 
 
 def find_company_by_name_and_owner(business_name: Optional[str], owner_id: Optional[str]) -> Optional[str]:
-    """Case-insensitive name match scoped to the SDR's HubSpot owner ID.
+    """Normalized name match scoped to the SDR's HubSpot owner ID.
 
-    HubSpot's search API has no case-insensitive equals operator, so
-    candidates are fetched via a free-text query and the exact comparison is
-    done here in Python.
+    This allows harmless differences like "Inc" vs. "Inc.", punctuation, and
+    legal suffixes while avoiding broad fuzzy matches.
     """
     if not business_name:
         return None
-    target_name = business_name.strip().lower()
+    target_name = _normalize_company_name(business_name)
     payload = {
         "query": business_name,
         "properties": ["name", "hubspot_owner_id"],
         "limit": 25,
     }
     results = _request("POST", "/crm/v3/objects/companies/search", json=payload).get("results", [])
+    matches = []
     for result in results:
         properties = result.get("properties", {})
-        name_value = (properties.get("name") or "").strip().lower()
+        name_value = _normalize_company_name(properties.get("name"))
         if name_value != target_name:
             continue
         if owner_id and str(properties.get("hubspot_owner_id") or "").strip() != str(owner_id).strip():
             continue
-        return result["id"]
-    return None
+        matches.append(result["id"])
+    if len(matches) > 1:
+        raise HubSpotSyncError(
+            f"Multiple HubSpot companies matched '{business_name}' for this SDR owner after name normalization."
+        )
+    return matches[0] if matches else None
 
 
 def find_company_by_name_and_state(business_name: Optional[str], state: Optional[str]) -> Optional[str]:
     """Backward-compatible fallback for records without an SDR owner ID."""
     if not business_name:
         return None
-    target_name = business_name.strip().lower()
+    target_name = _normalize_company_name(business_name)
     state_variants = _state_variants(state)
     payload = {
         "query": business_name,
@@ -293,7 +320,7 @@ def find_company_by_name_and_state(business_name: Optional[str], state: Optional
     results = _request("POST", "/crm/v3/objects/companies/search", json=payload).get("results", [])
     for result in results:
         properties = result.get("properties", {})
-        name_value = (properties.get("name") or "").strip().lower()
+        name_value = _normalize_company_name(properties.get("name"))
         if name_value != target_name:
             continue
         if state_variants:
@@ -385,7 +412,7 @@ def _company_matches_name_and_owner(company_id: str, business_name: Optional[str
     )
     properties = result.get("properties", {})
     return (
-        (properties.get("name") or "").strip().lower() == business_name.strip().lower()
+        _normalize_company_name(properties.get("name")) == _normalize_company_name(business_name)
         and str(properties.get("hubspot_owner_id") or "").strip() == str(owner_id).strip()
     )
 
