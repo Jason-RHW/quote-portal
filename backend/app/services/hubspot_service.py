@@ -506,10 +506,16 @@ def update_company_delivered_lifecycle_stage(company_id: str) -> bool:
 
 
 def find_contact_list_by_name(list_name: str) -> Optional[str]:
+    """Uses HubSpot's dedicated list-search endpoint rather than filtering a
+    plain GET /crm/v3/lists by listType=STATIC — that filter apparently never
+    matches lists created with processingType=MANUAL (as create_static_contact_list
+    does below), so this always returned None for lists this code itself
+    created, causing every delivered-sync after the first one on a given
+    calendar day to hit a "list already exists" 400 on creation."""
     response = _request(
-        "GET",
-        "/crm/v3/lists",
-        params={"objectTypeId": "0-1", "listType": "STATIC", "count": 500},
+        "POST",
+        "/crm/v3/lists/search",
+        json={"query": list_name, "offset": 0, "count": 20},
     )
     for list_item in response.get("lists", []):
         if list_item.get("name") == list_name:
@@ -529,7 +535,19 @@ def create_static_contact_list(list_name: str) -> Optional[str]:
 
 
 def get_or_create_static_contact_list(list_name: str) -> Optional[str]:
-    return find_contact_list_by_name(list_name) or create_static_contact_list(list_name)
+    list_id = find_contact_list_by_name(list_name)
+    if list_id:
+        return list_id
+    try:
+        return create_static_contact_list(list_name)
+    except HubSpotSyncError as e:
+        if "DUPLICATE_LIST_NAMES" in str(e):
+            # Belt-and-suspenders: some other sync created it between our
+            # lookup and our create attempt (or the search above still
+            # missed it for some other reason) — look it up again now that
+            # we know for certain it exists, rather than failing the record.
+            return find_contact_list_by_name(list_name)
+        raise
 
 
 def add_contact_to_list(list_id: str, contact_id: str) -> bool:
