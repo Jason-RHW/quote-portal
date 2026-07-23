@@ -21,7 +21,7 @@ from sdr_kpi_lib import compute_sdr_kpis
 
 from app.services import aircall_client
 from app.config.sdr_aircall_config import AIRCALL_USER_MAP, CONNECTED_TAGS, TERMINATED_SDRS
-from app.models.db_models import DailySummary, SdrDailyStat
+from app.models.db_models import DailySummary, SdrDailyStat, Sdr
 
 PST = ZoneInfo("America/Los_Angeles")
 
@@ -78,13 +78,30 @@ def _previous_working_date(db: Session, before: date) -> Optional[date]:
     return row[0] if row else None
 
 
+def _aircall_user_map(db: Session) -> dict:
+    """Aircall raw user name -> canonical SDR name.
+
+    Settings is now the source of truth for ordinary active SDR names, so a
+    newly added SDR whose Aircall display name exactly matches their portal
+    name is picked up automatically. The static config still wins for aliases
+    and historical spelling variants.
+    """
+    active_sdrs = db.query(Sdr).filter(Sdr.active.is_(True)).all()
+    dynamic_map = {
+        (s.full_name or "").strip(): (s.full_name or "").strip()
+        for s in active_sdrs
+        if (s.full_name or "").strip()
+    }
+    return {**dynamic_map, **AIRCALL_USER_MAP}
+
+
 def ingest_day(db: Session, target_date: date) -> dict:
     """Fetch, compute, and upsert one day's Aircall KPIs. Idempotent —
     running it twice for the same date overwrites, not duplicates
     (upsert on report_date / (report_date, sdr_name)). Returns a summary
     dict for logging, not the full report shape the dashboard reads."""
     calls = aircall_client.fetch_calls_for_day(target_date)
-    kpis_by_sdr = compute_sdr_kpis(calls, AIRCALL_USER_MAP, CONNECTED_TAGS, TERMINATED_SDRS)
+    kpis_by_sdr = compute_sdr_kpis(calls, _aircall_user_map(db), CONNECTED_TAGS, TERMINATED_SDRS)
 
     # "Unassigned (...)" buckets are a data-quality signal, not a person —
     # same rule sdr-daily-report uses, no row gets written for them.
