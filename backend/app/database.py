@@ -21,6 +21,14 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if is_sqlite else {},
     poolclass=None if is_sqlite else NullPool,
+    # SQLAlchemy 2.0's "insertmanyvalues" batches INSERT...RETURNING and
+    # matches returned rows back to Python objects by comparing the primary
+    # key value. Our String-typed id columns store UUIDs, but production's
+    # actual Postgres columns are the native `uuid` type — the driver hands
+    # the value back in a form that doesn't compare equal to the Python str
+    # we sent, so that matching fails ("Can't match sentinel values").
+    # Disabling it reverts to the older, universally-compatible insert path.
+    use_insertmanyvalues=False,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

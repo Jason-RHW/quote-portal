@@ -430,12 +430,17 @@ def batch_hubspot_sync(db: Session, ids: List[str]) -> dict:
         if req.status not in (SampleRequestStatus.sent, SampleRequestStatus.delivered):
             skipped += 1
             continue
-        if req.status == SampleRequestStatus.sent and req.hubspot_sent_synced:
-            skipped += 1
-            continue
-        if req.status == SampleRequestStatus.delivered and req.hubspot_delivered_synced:
-            skipped += 1
-            continue
+        # TEMPORARILY DISABLED at Jason's request while debugging why
+        # hubspot_delivered_synced isn't flipping to True even when a note
+        # shows up in HubSpot — re-enable once that's root-caused, since
+        # without this a retry can create duplicate HubSpot notes for
+        # records that already fully succeeded.
+        # if req.status == SampleRequestStatus.sent and req.hubspot_sent_synced:
+        #     skipped += 1
+        #     continue
+        # if req.status == SampleRequestStatus.delivered and req.hubspot_delivered_synced:
+        #     skipped += 1
+        #     continue
         if req.status == SampleRequestStatus.sent and not req.tracking_number:
             skipped += 1
             continue
