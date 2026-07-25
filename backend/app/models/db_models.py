@@ -304,3 +304,16 @@ class SampleRequestEvent(Base):
     changed_by = Column(String, nullable=True)
     note = Column(String, nullable=True)
     changed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CommissionSpiffRule(Base):
+    """Applied SDR commission SPIFF layers, persisted by month."""
+    __tablename__ = "commission_spiff_rules"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    month = Column(String, nullable=False, index=True)
+    prompt = Column(String, nullable=True)
+    rule_json = Column(JSON, nullable=False, default=dict)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)

@@ -68,6 +68,10 @@ export const api = {
     preview: (data) => request("/spiff/mock/preview", { method: "POST", body: JSON.stringify(data) }),
     previewRules: (data) => request("/spiff/mock/preview-rules", { method: "POST", body: JSON.stringify(data) }),
     apply: (data) => request("/spiff/mock/apply", { method: "POST", body: JSON.stringify(data) }),
+    campaigns: (month) => request(`/spiff/campaigns/${month}`),
+    createCampaigns: (month, data) => request(`/spiff/campaigns/${month}`, { method: "POST", body: JSON.stringify(data) }),
+    deleteCampaign: (id) => request(`/spiff/campaigns/${id}`, { method: "DELETE" }),
+    clearCampaigns: (month) => request(`/spiff/campaigns/month/${month}`, { method: "DELETE" }),
   },
   samples: {
     list:   (params = {}) => {

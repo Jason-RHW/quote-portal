@@ -7,10 +7,71 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
-from app.models.db_models import Quote, SampleRequest, Sdr, SdrDailyStat
+from app.models.db_models import CommissionSpiffRule, Quote, SampleRequest, Sdr, SdrDailyStat, gen_id
 
 
 EXCLUDED_COMMISSION_SDRS = {"Jason Rui", "Henry Park", "Angel Sun"}
+
+
+def _campaign_payload(row: CommissionSpiffRule) -> Dict[str, Any]:
+    return {
+        "id": row.id,
+        "month": row.month,
+        "prompt": row.prompt or "",
+        "rule": row.rule_json or {},
+        "created_by": row.created_by,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def list_campaigns(db: Session, month: str) -> List[Dict[str, Any]]:
+    rows = (
+        db.query(CommissionSpiffRule)
+        .filter(CommissionSpiffRule.month == month, CommissionSpiffRule.deleted_at.is_(None))
+        .order_by(CommissionSpiffRule.created_at.asc(), CommissionSpiffRule.id.asc())
+        .all()
+    )
+    return [_campaign_payload(row) for row in rows]
+
+
+def create_campaigns(db: Session, month: str, campaigns: List[Dict[str, Any]], created_by: Optional[str] = None) -> List[Dict[str, Any]]:
+    for campaign in campaigns:
+        db.add(
+            CommissionSpiffRule(
+                id=gen_id(),
+                month=month,
+                prompt=campaign.get("prompt") or "",
+                rule_json=campaign.get("rule") or {},
+                created_by=created_by,
+            )
+        )
+    db.commit()
+    return list_campaigns(db, month)
+
+
+def delete_campaign(db: Session, campaign_id: str) -> Optional[str]:
+    row = (
+        db.query(CommissionSpiffRule)
+        .filter(CommissionSpiffRule.id == campaign_id, CommissionSpiffRule.deleted_at.is_(None))
+        .first()
+    )
+    if not row:
+        return None
+    row.deleted_at = datetime.utcnow()
+    db.commit()
+    return row.month
+
+
+def clear_campaigns(db: Session, month: str) -> None:
+    rows = (
+        db.query(CommissionSpiffRule)
+        .filter(CommissionSpiffRule.month == month, CommissionSpiffRule.deleted_at.is_(None))
+        .all()
+    )
+    now = datetime.utcnow()
+    for row in rows:
+        row.deleted_at = now
+    db.commit()
 
 
 RULE_SCHEMA = {

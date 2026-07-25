@@ -24,6 +24,16 @@ class SpiffRulePreviewRequest(BaseModel):
     rules: list[dict]
 
 
+class SpiffCampaignCreate(BaseModel):
+    prompt: str = ""
+    rule: dict
+
+
+class SpiffCampaignCreateRequest(BaseModel):
+    campaigns: list[SpiffCampaignCreate]
+    created_by: str | None = None
+
+
 @router.get("/mock/monthly/{month}")
 def monthly_spiff_dashboard(month: str, db: Session = Depends(get_db)):
     try:
@@ -83,3 +93,54 @@ def apply_spiff(data: SpiffApplyRequest, db: Session = Depends(get_db)):
         return spiff_service.apply_rules_to_month(db, data.month, rules)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"SPIFF apply failed: {e}")
+
+
+@router.get("/campaigns/{month}")
+def list_spiff_campaigns(month: str, db: Session = Depends(get_db)):
+    if not month.strip():
+        raise HTTPException(status_code=422, detail="Month is required.")
+    try:
+        return spiff_service.list_campaigns(db, month)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"SPIFF campaigns failed: {e}")
+
+
+@router.post("/campaigns/{month}")
+def create_spiff_campaigns(month: str, data: SpiffCampaignCreateRequest, db: Session = Depends(get_db)):
+    if not month.strip():
+        raise HTTPException(status_code=422, detail="Month is required.")
+    if not data.campaigns:
+        raise HTTPException(status_code=422, detail="At least one SPIFF campaign is required.")
+    try:
+        return spiff_service.create_campaigns(
+            db,
+            month,
+            [campaign.model_dump() for campaign in data.campaigns],
+            data.created_by,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Create SPIFF campaigns failed: {e}")
+
+
+@router.delete("/campaigns/{campaign_id}")
+def delete_spiff_campaign(campaign_id: str, db: Session = Depends(get_db)):
+    try:
+        month = spiff_service.delete_campaign(db, campaign_id)
+        if not month:
+            raise HTTPException(status_code=404, detail="SPIFF campaign not found.")
+        return spiff_service.list_campaigns(db, month)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Delete SPIFF campaign failed: {e}")
+
+
+@router.delete("/campaigns/month/{month}")
+def clear_spiff_campaigns(month: str, db: Session = Depends(get_db)):
+    if not month.strip():
+        raise HTTPException(status_code=422, detail="Month is required.")
+    try:
+        spiff_service.clear_campaigns(db, month)
+        return []
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Clear SPIFF campaigns failed: {e}")

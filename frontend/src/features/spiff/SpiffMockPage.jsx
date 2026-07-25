@@ -130,22 +130,6 @@ function exampleCalculation(rule) {
   return ["Review the applied real-data preview below before confirming."];
 }
 
-function storageKey(month) {
-  return `sdr_commission_spiffs_${month}`;
-}
-
-function loadCampaigns(month) {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey(month)) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveCampaigns(month, campaigns) {
-  localStorage.setItem(storageKey(month), JSON.stringify(campaigns));
-}
-
 function campaignTitle(campaign) {
   const rule = campaign.rule;
   return `${rule.start_date} to ${rule.end_date} · ${ruleSummary(rule)}`;
@@ -244,6 +228,7 @@ export default function SpiffMockPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let ignore = false;
     const bounds = monthBounds(month);
     setDates(bounds);
     setAppliedRuleReport(null);
@@ -251,19 +236,28 @@ export default function SpiffMockPage() {
     setDetailRow(null);
     setLoading(true);
     setError("");
-    const savedCampaigns = loadCampaigns(month);
-    setCampaigns(savedCampaigns);
-    api.spiff.monthly(month)
-      .then(base => {
+    Promise.all([api.spiff.monthly(month), api.spiff.campaigns(month)])
+      .then(([base, savedCampaigns]) => {
+        if (ignore) return null;
         setDashboard(base);
+        setCampaigns(savedCampaigns || []);
         if (savedCampaigns.length > 0) {
           return api.spiff.apply({ month, rules: savedCampaigns.map(campaign => campaign.rule) })
-            .then(setAppliedRuleReport);
+            .then(result => {
+              if (!ignore) setAppliedRuleReport(result);
+            });
         }
         return null;
       })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch(e => {
+        if (!ignore) setError(e.message);
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [month]);
 
   useEffect(() => {
@@ -309,17 +303,12 @@ export default function SpiffMockPage() {
     setPreviewLoading(true);
     setError("");
     try {
-      const nextCampaigns = [
-        ...campaigns,
-        ...stagedRules.map((rule, index) => ({
-          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      const createdCampaigns = stagedRules.map((rule, index) => ({
           prompt: ruleTab === "ai" ? ruleText.trim() : `Traditional rule layer ${index + 1}`,
           rule,
-          created_at: new Date().toISOString(),
-        })),
-      ];
+      }));
+      const nextCampaigns = await api.spiff.createCampaigns(month, { campaigns: createdCampaigns });
       const result = await api.spiff.apply({ month, rules: nextCampaigns.map(campaign => campaign.rule) });
-      saveCampaigns(month, nextCampaigns);
       setCampaigns(nextCampaigns);
       setAppliedRuleReport(result);
       setShowRuleModal(false);
@@ -342,27 +331,44 @@ export default function SpiffMockPage() {
     setStagedRules([]);
   }
 
-  function clearAppliedRule() {
-    saveCampaigns(month, []);
+  async function clearAppliedRule() {
+    setLoading(true);
+    setError("");
+    try {
+      await api.spiff.clearCampaigns(month);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+      return;
+    }
     setCampaigns([]);
     setAppliedRuleReport(null);
     setStagedPreview(null);
     setDetailRow(null);
+    setHoverReason(null);
+    setLoading(false);
   }
 
   async function deleteCampaign(id) {
-    const nextCampaigns = campaigns.filter(campaign => campaign.id !== id);
-    saveCampaigns(month, nextCampaigns);
-    setCampaigns(nextCampaigns);
+    setLoading(true);
+    setError("");
+    let nextCampaigns;
+    try {
+      nextCampaigns = await api.spiff.deleteCampaign(id);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+      return;
+    }
+    setCampaigns(nextCampaigns || []);
     setDeleteCandidate(null);
     setDetailRow(null);
     setHoverReason(null);
-    if (nextCampaigns.length === 0) {
+    if (!nextCampaigns || nextCampaigns.length === 0) {
       setAppliedRuleReport(null);
+      setLoading(false);
       return;
     }
-    setLoading(true);
-    setError("");
     try {
       const result = await api.spiff.apply({ month, rules: nextCampaigns.map(campaign => campaign.rule) });
       setAppliedRuleReport(result);
