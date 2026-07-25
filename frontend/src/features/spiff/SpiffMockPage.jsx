@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import "../../components/shared.css";
 import "./spiff.css";
@@ -13,6 +13,11 @@ function monthBounds(month) {
   const endDate = new Date(year, m, 0);
   const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
   return { start, end };
+}
+
+function monthLabel(month) {
+  const [year, m] = month.split("-").map(Number);
+  return new Date(year, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
 function money(value) {
@@ -398,9 +403,7 @@ export default function SpiffMockPage() {
           <p className="page-sub">Base: $1/Sample, $3/Quote</p>
         </div>
         <div className="page-header-actions">
-          <label className="spiff-month-filter">
-            <input type="month" value={month} onChange={e => setMonth(e.target.value)} />
-          </label>
+          <MonthPicker value={month} onChange={setMonth} />
           <button className="btn-secondary" onClick={() => setShowCampaignModal(true)}>
             Applied SPIFF Rules ({campaigns.length})
           </button>
@@ -771,6 +774,69 @@ function TraditionalLayerRow({ layer, sdrOptions, canRemove, onChange, onRemove 
         <label>&nbsp;</label>
         <button className="row-action-btn danger" onClick={onRemove} disabled={!canRemove}>Remove</button>
       </div>
+    </div>
+  );
+}
+
+function MonthPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(() => Number(value.slice(0, 4)));
+  const wrapRef = useRef(null);
+  const selectedYear = Number(value.slice(0, 4));
+  const selectedMonth = Number(value.slice(5, 7));
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    number: i + 1,
+    label: new Date(viewYear, i, 1).toLocaleDateString("en-US", { month: "short" }),
+  }));
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleClickOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  useEffect(() => {
+    setViewYear(Number(value.slice(0, 4)));
+  }, [value]);
+
+  function selectMonth(monthNumber) {
+    onChange(`${viewYear}-${String(monthNumber).padStart(2, "0")}`);
+    setOpen(false);
+  }
+
+  return (
+    <div className="spiff-month-picker" ref={wrapRef}>
+      <button type="button" className="spiff-month-button" onClick={() => setOpen(current => !current)}>
+        <span>{monthLabel(value)}</span>
+        <span className="spiff-month-caret">▾</span>
+      </button>
+      {open && (
+        <div className="spiff-month-panel">
+          <div className="spiff-month-panel-header">
+            <button type="button" className="spiff-month-nav" onClick={() => setViewYear(year => year - 1)}>‹</button>
+            <span>{viewYear}</span>
+            <button type="button" className="spiff-month-nav" onClick={() => setViewYear(year => year + 1)}>›</button>
+          </div>
+          <div className="spiff-month-grid">
+            {months.map(month => {
+              const active = viewYear === selectedYear && month.number === selectedMonth;
+              return (
+                <button
+                  type="button"
+                  key={month.number}
+                  className={`spiff-month-option ${active ? "active" : ""}`}
+                  onClick={() => selectMonth(month.number)}
+                >
+                  {month.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

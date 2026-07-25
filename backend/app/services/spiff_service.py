@@ -11,6 +11,7 @@ from app.models.db_models import CommissionSpiffRule, Quote, SampleRequest, Sdr,
 
 
 EXCLUDED_COMMISSION_SDRS = {"Jason Rui", "Henry Park", "Angel Sun"}
+INVALID_COMMISSION_SDR_NAMES = {"", "no", "none", "n/a", "na", "unknown", "test"}
 
 
 def _campaign_payload(row: CommissionSpiffRule) -> Dict[str, Any]:
@@ -255,6 +256,15 @@ def _name_included(full_name: str, included_names: set[str]) -> bool:
     return any(name.lower() == full or name.lower() in full for name in included_names)
 
 
+def _is_commission_sdr_name(name: Optional[str]) -> bool:
+    normalized = (name or "").strip()
+    return bool(normalized) and normalized not in EXCLUDED_COMMISSION_SDRS and normalized.lower() not in INVALID_COMMISSION_SDR_NAMES
+
+
+def _known_sdr_names(db: Session) -> Dict[str, str]:
+    return {sdr.full_name.strip().lower(): sdr.full_name for sdr in db.query(Sdr).all() if _is_commission_sdr_name(sdr.full_name)}
+
+
 def _created_by_date(sdr: Sdr, as_of: Optional[date]) -> bool:
     if not as_of:
         return True
@@ -273,7 +283,7 @@ def _eligible_samples(db: Session, rule: Dict[str, Any]) -> tuple[Dict[str, Sdr]
     sdrs_by_id = {
         s.id: s
         for s in db.query(Sdr).all()
-        if s.full_name not in EXCLUDED_COMMISSION_SDRS
+        if _is_commission_sdr_name(s.full_name)
     }
 
     rows = db.query(SampleRequest).filter(SampleRequest.archived_at.is_(None)).all()
@@ -345,6 +355,7 @@ def _eligible_quotes(db: Session, rule: Dict[str, Any]) -> Dict[str, List[Quote]
     end = _parse_date(rule.get("end_date"))
     included_names = {name.strip() for name in rule.get("included_sdr_names", []) if name.strip()}
     quote_value_min = rule.get("quote_value_min")
+    known_sdr_names = _known_sdr_names(db)
     by_sdr: Dict[str, List[Quote]] = defaultdict(list)
     for quote in db.query(Quote).all():
         if not quote.date_requested:
@@ -356,8 +367,9 @@ def _eligible_quotes(db: Session, rule: Dict[str, Any]) -> Dict[str, List[Quote]
             continue
         if quote_value_min is not None and float(quote.quote_value or 0) <= float(quote_value_min):
             continue
-        sdr_name = (quote.extra or {}).get("associated_sdr") or quote.requested_by
-        if not sdr_name or sdr_name in EXCLUDED_COMMISSION_SDRS:
+        raw_sdr_name = ((quote.extra or {}).get("associated_sdr") or quote.requested_by or "").strip()
+        sdr_name = known_sdr_names.get(raw_sdr_name.lower())
+        if not sdr_name:
             continue
         if not _name_included(sdr_name, included_names):
             continue
@@ -370,7 +382,7 @@ def _eligible_quotes(db: Session, rule: Dict[str, Any]) -> Dict[str, List[Quote]
 def _active_sdrs_as_of(db: Session, as_of: Optional[date]) -> List[Sdr]:
     rows = [
         sdr for sdr in db.query(Sdr).all()
-        if sdr.full_name not in EXCLUDED_COMMISSION_SDRS
+        if _is_commission_sdr_name(sdr.full_name)
     ]
     if not as_of:
         return rows
@@ -404,7 +416,7 @@ def _bonus_eligible_sdrs(db: Session, rule: Dict[str, Any]) -> List[Sdr]:
         return [
             sdr for sdr in db.query(Sdr).all()
             if sdr.full_name in working_names
-            and sdr.full_name not in EXCLUDED_COMMISSION_SDRS
+            and _is_commission_sdr_name(sdr.full_name)
         ]
     return _active_sdrs_as_of(db, end or start)
 
