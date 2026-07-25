@@ -63,6 +63,12 @@ export const api = {
     weekly:  (weekKey)   => request(`/sdr-performance/weekly/${weekKey}`),
     monthly: (monthKey)  => request(`/sdr-performance/monthly/${monthKey}`),
   },
+  spiff: {
+    monthly: (month) => request(`/spiff/mock/monthly/${month}`),
+    preview: (data) => request("/spiff/mock/preview", { method: "POST", body: JSON.stringify(data) }),
+    previewRules: (data) => request("/spiff/mock/preview-rules", { method: "POST", body: JSON.stringify(data) }),
+    apply: (data) => request("/spiff/mock/apply", { method: "POST", body: JSON.stringify(data) }),
+  },
   samples: {
     list:   (params = {}) => {
       const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ""));

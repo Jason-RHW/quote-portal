@@ -6,6 +6,7 @@ import POsPage from "./features/pos/POsPage";
 import AccountsPage from "./features/accounts/AccountsPage";
 import DashboardPage from "./pages/DashboardPage";
 import SdrPerformancePage from "./features/sdr-performance/SdrPerformancePage";
+import SpiffMockPage from "./features/spiff/SpiffMockPage";
 import SamplesPage from "./features/samples/SamplesPage";
 import SettingsPage from "./features/samples/SettingsPage";
 import "./App.css";
@@ -17,7 +18,8 @@ const NAV = [
   { key: "samples",   label: "Samples",            icon: <BoxIcon /> },
   { key: "sample-settings", label: "Settings", icon: <GearIcon /> },
   { key: "dashboard", label: "Dashboard",          icon: <ChartIcon /> },
-  { key: "sdr-performance", label: "SDR performance", icon: <PulseIcon /> },
+  { key: "sdr-performance", label: "SDR Performance", icon: <PulseIcon /> },
+  { key: "spiff", label: "SDR Commission", icon: <CalculatorIcon /> },
 ];
 
 export default function App() {
@@ -55,7 +57,10 @@ export default function App() {
             <ChartIcon />Dashboard
           </button>
           <button className={`sidebar-item ${tab==="sdr-performance"?"active":""}`} onClick={() => setTab("sdr-performance")}>
-            <PulseIcon />SDR performance
+            <PulseIcon />SDR Performance
+          </button>
+          <button className={`sidebar-item ${tab==="spiff"?"active":""}`} onClick={() => setTab("spiff")}>
+            <CalculatorIcon />SDR Commission
           </button>
           <div className="sidebar-bottom">
             <button className={`sidebar-item ${tab==="sample-settings"?"active":""}`} onClick={() => setTab("sample-settings")}>
@@ -72,6 +77,7 @@ export default function App() {
           {tab === "sample-settings" && <SettingsPage />}
           {tab === "dashboard" && <DashboardPage />}
           {tab === "sdr-performance" && <SdrPerformancePage />}
+          {tab === "spiff" && <SpiffMockPage />}
         </main>
       </div>
     </div>
@@ -100,4 +106,7 @@ function ChartIcon() {
 }
 function PulseIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
+}
+function CalculatorIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="12" y1="10" x2="12.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/><line x1="8" y1="14" x2="8.01" y2="14"/><line x1="12" y1="14" x2="12.01" y2="14"/><line x1="16" y1="14" x2="16.01" y2="14"/><line x1="8" y1="18" x2="8.01" y2="18"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="16" y1="18" x2="16.01" y2="18"/></svg>;
 }
