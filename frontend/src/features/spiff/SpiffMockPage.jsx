@@ -87,6 +87,12 @@ function ruleSummary(rule) {
   return ruleLabel(rule);
 }
 
+function dailyLeaderTieText(rule) {
+  return (rule?.tie_behavior || "").toLowerCase() === "rollover"
+    ? " If there is a tie, that day's SPIFF rolls forward until one SDR clearly leads the accumulated tied window."
+    : " Ties are broken by earliest last sample timestamp, then SDR name.";
+}
+
 function plainUnderstanding(rule) {
   if (!rule) return "";
   const quoteCondition = rule.quote_value_min != null ? ` Only quotes with value greater than ${money(rule.quote_value_min)} count.` : "";
@@ -107,7 +113,7 @@ function plainUnderstanding(rule) {
     return `From ${rule.start_date} to ${rule.end_date}, run multiple first-to-target milestones for ${entityLabel(rule)}: ${milestones}.`;
   }
   if (rule.rule_type === "daily_leader_bonus") {
-    return `From ${rule.start_date} to ${rule.end_date}, each day the SDR with the most eligible samples gets ${money(rule.bonus_amount)}. The contest resets daily, so the same SDR can win again on another day.`;
+    return `From ${rule.start_date} to ${rule.end_date}, each day the SDR with the most eligible samples gets ${money(rule.bonus_amount)}. The contest resets daily, so the same SDR can win again on another day.${dailyLeaderTieText(rule)}`;
   }
   return `From ${rule.start_date} to ${rule.end_date}, apply a ${ruleLabel(rule).toLowerCase()} SPIFF to eligible ${entityLabel(rule)}.`;
 }
@@ -138,6 +144,12 @@ function exampleCalculation(rule) {
     return (rule.first_to_targets || []).map(item => `First SDR to ${item.target_count} eligible ${entityLabel(rule)} gets ${money(item.bonus_amount)}.`);
   }
   if (rule.rule_type === "daily_leader_bonus") {
+    if ((rule.tie_behavior || "").toLowerCase() === "rollover") {
+      return [
+        `Monday ties, so Monday's ${money(rule.bonus_amount)} is unpaid and rolls forward.`,
+        `Tuesday compares Monday+Tuesday totals; the clear leader gets ${money(rule.bonus_amount * 2)}.`,
+      ];
+    }
     return [
       `Monday: SDR A has 6 samples, SDR B has 4, so SDR A gets ${money(rule.bonus_amount)}.`,
       `Tuesday starts over; if SDR A is top again, SDR A gets another ${money(rule.bonus_amount)}.`,
@@ -159,6 +171,7 @@ function newTraditionalLayer() {
     appliesTo: "sample",
     conditionType: "none",
     conditionValue: "",
+    tiePolicy: "earliest_last_activity",
   };
 }
 
@@ -220,7 +233,7 @@ function buildTraditionalRule(layer, start, end, index) {
       target_count: null,
       bonus_amount: amount,
       max_winners: 1,
-      tie_behavior: "Highest sample count per day wins; ties break by earliest last sample timestamp, then SDR name.",
+      tie_behavior: layer.tiePolicy || "earliest_last_activity",
     };
   }
   if (layer.conditionType === "quote_value_gt") {
@@ -797,6 +810,12 @@ function TraditionalLayerRow({ layer, sdrOptions, canRemove, onChange, onRemove 
               onChange={e => update("conditionValue", e.target.value)}
               placeholder="X"
             />
+          )}
+          {layer.conditionType === "daily_top_samples" && (
+            <select value={layer.tiePolicy || "earliest_last_activity"} onChange={e => update("tiePolicy", e.target.value)}>
+              <option value="earliest_last_activity">Tie: earliest last sample wins</option>
+              <option value="rollover">Tie: roll over to next day</option>
+            </select>
           )}
         </div>
       </div>

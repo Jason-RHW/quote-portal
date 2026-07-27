@@ -167,7 +167,9 @@ Defaults when omitted:
 - eligible_statuses: requested, sent, delivered, on_hold.
 - included_sdr_names: [] means all SDRs with eligible samples.
 - tie_behavior: earliest qualifying sample timestamp wins for first_to_target; equal rank for leaderboard.
-  For daily_leader_bonus, max_winners defaults to 1; ties are broken by earliest last sample timestamp, then SDR name.
+  For daily_leader_bonus, set tie_behavior to one of:
+  earliest_last_activity: tied daily leaders are broken by earliest last sample timestamp, then SDR name.
+  rollover: if a day ties, do not pay that day yet; carry the unpaid bonus into the next day and compare total samples across the accumulated tied window until one SDR clearly leads.
 
 SPIFF rules replace the normal commission for the records they cover. For example, "$3 per sample today" means
 the payout is exactly $3 per sample, not the normal $1 plus $3.
@@ -221,6 +223,10 @@ def interpret_spiff_prompt(prompt: str) -> Dict[str, Any]:
         rule["bonus_amount"] = inferred_bonus
         rule["leaderboard_prizes"] = []
         rule["max_winners"] = int(rule.get("max_winners") or 1)
+        if "roll" in lower_prompt or "carry" in lower_prompt:
+            rule["tie_behavior"] = "rollover"
+        elif rule.get("tie_behavior") not in {"rollover", "earliest_last_activity", "split", "no_payout"}:
+            rule["tie_behavior"] = "earliest_last_activity"
         if not rule.get("assumptions"):
             rule["assumptions"] = []
         rule["assumptions"].append("Interpreted as a daily SPIFF: each date has its own top-SDR winner by eligible sample count.")
@@ -955,23 +961,58 @@ def calculate_preview(db: Session, rule: Dict[str, Any]) -> Dict[str, Any]:
                 })
         winners_by_name: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         daily_bonus = float(rule.get("bonus_amount") or 0)
-        for d, entries in daily_entries.items():
-            entries.sort(key=lambda item: (-item["sample_count"], item["reached_at"], item["sdr_name"]))
-            for winner in entries[:max_winners]:
-                winners_by_name[winner["sdr_name"]].append({
+        tie_policy = (rule.get("tie_behavior") or "earliest_last_activity").strip().lower()
+        if tie_policy == "rollover":
+            rollover_start: Optional[date] = None
+            rollover_days: List[date] = []
+            rollover_counts: Dict[str, int] = defaultdict(int)
+            for d in sorted(daily_entries):
+                if rollover_start is None:
+                    rollover_start = d
+                    rollover_days = []
+                    rollover_counts = defaultdict(int)
+                rollover_days.append(d)
+                for entry in daily_entries[d]:
+                    rollover_counts[entry["sdr_name"]] += int(entry["sample_count"] or 0)
+                ranked = sorted(rollover_counts.items(), key=lambda item: (-item[1], item[0]))
+                if not ranked or ranked[0][1] <= 0:
+                    continue
+                if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+                    continue
+                winner_name, sample_count = ranked[0]
+                winners_by_name[winner_name].append({
                     "date": d.isoformat(),
-                    "sample_count": winner["sample_count"],
-                    "amount": round(daily_bonus, 2),
+                    "start_date": rollover_start.isoformat(),
+                    "end_date": d.isoformat(),
+                    "days": [day.isoformat() for day in rollover_days],
+                    "sample_count": sample_count,
+                    "amount": round(daily_bonus * len(rollover_days), 2),
+                    "rolled_over_days": max(len(rollover_days) - 1, 0),
                 })
+                rollover_start = None
+                rollover_days = []
+                rollover_counts = defaultdict(int)
+        else:
+            for d, entries in daily_entries.items():
+                entries.sort(key=lambda item: (-item["sample_count"], item["reached_at"], item["sdr_name"]))
+                for winner in entries[:max_winners]:
+                    winners_by_name[winner["sdr_name"]].append({
+                        "date": d.isoformat(),
+                        "sample_count": winner["sample_count"],
+                        "amount": round(daily_bonus, 2),
+                    })
         for r in results:
             wins = winners_by_name.get(r["sdr_name"], [])
             if wins:
-                bonus = daily_bonus * len(wins)
+                bonus = sum(float(win.get("amount") or 0) for win in wins)
                 r["daily_wins"] = wins
                 r["payout_amount"] = round(float(r["payout_amount"]) + bonus, 2)
                 r["spiff_payout"] = round(float(r["spiff_payout"]) + bonus, 2)
-                dates = ", ".join(win["date"] for win in wins)
-                r["reason"] += f" Won {len(wins)} daily top-SDR contest(s) ({dates}): +${bonus:,.2f}."
+                dates = ", ".join(
+                    f"{win.get('start_date')} to {win.get('end_date')}" if win.get("rolled_over_days") else win["date"]
+                    for win in wins
+                )
+                r["reason"] += f" Won {len(wins)} daily top-SDR payout(s) ({dates}): +${bonus:,.2f}."
             else:
                 r["reason"] += " No daily top-SDR wins."
 
