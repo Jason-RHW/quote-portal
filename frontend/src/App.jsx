@@ -79,19 +79,19 @@ export default function App() {
           {visitedTabs.includes("quotes") && <PageSlot active={tab === "quotes"}><QuotesPage /></PageSlot>}
           {visitedTabs.includes("pos") && <PageSlot active={tab === "pos"}><POsPage /></PageSlot>}
           {visitedTabs.includes("accounts") && <PageSlot active={tab === "accounts"}><AccountsPage /></PageSlot>}
-          {visitedTabs.includes("samples") && <PageSlot active={tab === "samples"}><SamplesPage /></PageSlot>}
+          {visitedTabs.includes("samples") && <PageSlot active={tab === "samples"} internalScroll><SamplesPage /></PageSlot>}
           {visitedTabs.includes("sample-settings") && <PageSlot active={tab === "sample-settings"}><SettingsPage /></PageSlot>}
           {visitedTabs.includes("dashboard") && <PageSlot active={tab === "dashboard"}><DashboardPage /></PageSlot>}
           {visitedTabs.includes("sdr-performance") && <PageSlot active={tab === "sdr-performance"}><SdrPerformancePage /></PageSlot>}
-          {visitedTabs.includes("spiff") && <PageSlot active={tab === "spiff"}><SpiffMockPage /></PageSlot>}
+          {visitedTabs.includes("spiff") && <PageSlot active={tab === "spiff"} internalScroll><SpiffMockPage /></PageSlot>}
         </main>
       </div>
     </div>
   );
 }
 
-function PageSlot({ active, children }) {
-  return <div className={`page-slot ${active ? "active" : ""}`}>{children}</div>;
+function PageSlot({ active, internalScroll = false, children }) {
+  return <div className={`page-slot ${active ? "active" : ""} ${internalScroll ? "internal-scroll" : ""}`}>{children}</div>;
 }
 
 function GearIcon() {
