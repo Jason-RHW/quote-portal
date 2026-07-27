@@ -216,6 +216,11 @@
 .spiff-record-table th:nth-child(2) { width: 118px; }
 .spiff-record-table th:nth-child(4) { width: 112px; }
 .spiff-record-table td:nth-child(3) { white-space: normal; text-align: left; }
+.spiff-overall-table th:nth-child(1) { width: 56px; }
+.spiff-overall-table th:nth-child(2),
+.spiff-overall-table td:nth-child(2) { width: auto; white-space: normal; text-align: left; }
+.spiff-overall-table th:nth-child(3),
+.spiff-overall-table td:nth-child(3) { width: 112px; white-space: nowrap; text-align: right; }
 .spiff-record-section .spiff-empty { margin: 12px; }
 .spiff-record-amount { color: var(--status-fulfilled-text); font-weight: 700; font-variant-numeric: tabular-nums; }
 .spiff-record-amount.adjusted { color: #6D28D9; }
