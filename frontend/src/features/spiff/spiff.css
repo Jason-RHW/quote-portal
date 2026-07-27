@@ -139,13 +139,47 @@
   font-size: 12px;
 }
 .spiff-total-line strong { color: var(--text-primary); font-size: 16px; font-variant-numeric: tabular-nums; }
-.spiff-detail-modal { width: min(860px, 94vw); }
-.spiff-detail-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-height: 68vh; overflow: auto; }
-.spiff-record-section { min-width: 0; }
+.spiff-detail-modal { width: min(1040px, 94vw); }
+.spiff-detail-body { display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow: auto; }
+.spiff-record-section {
+  min-width: 0;
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--surface-card);
+  overflow: hidden;
+}
+.spiff-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border-bottom: 0.5px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+.spiff-section-heading strong { color: var(--status-fulfilled-text); font-variant-numeric: tabular-nums; }
+.spiff-record-groups { display: flex; flex-direction: column; gap: 0; }
+.spiff-record-group + .spiff-record-group { border-top: 0.5px solid var(--border-subtle); }
+.spiff-record-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  background: #F8FAFC;
+}
+.spiff-record-group-title strong { color: #6D28D9; font-variant-numeric: tabular-nums; }
 .spiff-record-table th:nth-child(1) { width: 56px; }
 .spiff-record-table th:nth-child(2) { width: 118px; }
 .spiff-record-table th:nth-child(4) { width: 112px; }
 .spiff-record-table td:nth-child(3) { white-space: normal; text-align: left; }
+.spiff-record-section .spiff-empty { margin: 12px; }
 .spiff-record-amount { color: var(--status-fulfilled-text); font-weight: 700; font-variant-numeric: tabular-nums; }
 .spiff-record-amount.adjusted { color: #6D28D9; }
 .spiff-rule-modal { width: min(900px, 94vw); }

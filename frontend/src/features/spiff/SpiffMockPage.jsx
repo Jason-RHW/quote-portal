@@ -585,14 +585,15 @@ export default function SpiffMockPage() {
               <div>
                 <p className="modal-title">{detailRow.sdr_name}</p>
                 <p className="modal-subtitle">
-                  {detailRow.eligible_sample_count || 0} samples, {detailRow.eligible_quote_count || 0} quotes
+                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Overall SPIFF {money(detailRow.spiff_payout || 0)}
                 </p>
               </div>
               <button className="modal-close" onClick={() => setDetailRow(null)}>x</button>
             </div>
             <div className="modal-body spiff-detail-body">
-              <RecordTable title="Samples" rows={detailRow.samples || []} />
-              <RecordTable title="Quotes" rows={detailRow.quotes || []} />
+              <RecordGroups title="Samples" rows={detailRow.samples || []} total={detailRow.sample_payout || 0} />
+              <RecordGroups title="Quotes" rows={detailRow.quotes || []} total={detailRow.quote_payout || 0} />
+              <OverallSpiffTable rows={detailRow.spiff_bonus_details || []} total={detailRow.spiff_payout || 0} />
             </div>
           </div>
         </div>
@@ -943,31 +944,94 @@ function ReasonCard({ data }) {
   );
 }
 
-function RecordTable({ title, rows }) {
+function groupRecordRows(rows, title) {
+  const groups = new Map();
+  rows.forEach(row => {
+    const campaigns = row.spiff_campaigns?.length
+      ? row.spiff_campaigns.map(campaign => campaign.name || "SPIFF Rule")
+      : [row.spiff_applied ? "SPIFF adjusted records" : `Base Commission · ${title === "Quotes" ? "$3/quote" : "$1/sample"}`];
+    campaigns.forEach(name => {
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(row);
+    });
+  });
+  return Array.from(groups, ([name, groupedRows]) => ({ name, rows: groupedRows }));
+}
+
+function RecordGroups({ title, rows, total }) {
+  const groups = groupRecordRows(rows, title);
   return (
     <section className="spiff-record-section">
-      <div className="spiff-table-title">{title}</div>
+      <div className="spiff-section-heading">
+        <span>{title}</span>
+        <strong>{money(total)}</strong>
+      </div>
       {rows.length === 0 ? (
         <div className="spiff-empty">No {title.toLowerCase()} in this period.</div>
+      ) : (
+        <div className="spiff-record-groups">
+          {groups.map(group => (
+            <div className="spiff-record-group" key={group.name}>
+              <div className="spiff-record-group-title">
+                <span>{group.name}</span>
+                <strong>{money(group.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</strong>
+              </div>
+              <table className="data-table spiff-record-table">
+                <thead>
+                  <tr>
+                    <th>Index</th>
+                    <th>Date</th>
+                    <th>Business Name</th>
+                    <th>Dollar Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row, index) => (
+                    <tr key={`${group.name}-${row.id}`}>
+                      <td>{index + 1}</td>
+                      <td>{row.date || "No date"}</td>
+                      <td>{row.business_name}</td>
+                      <td className={row.spiff_applied ? "spiff-record-amount adjusted" : "spiff-record-amount"}>
+                        {money(row.amount || 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function OverallSpiffTable({ rows, total }) {
+  return (
+    <section className="spiff-record-section">
+      <div className="spiff-section-heading">
+        <span>Overall SPIFF</span>
+        <strong>{money(total)}</strong>
+      </div>
+      {rows.length === 0 ? (
+        <div className="spiff-empty">No overall SPIFF bonuses in this period.</div>
       ) : (
         <table className="data-table spiff-record-table">
           <thead>
             <tr>
               <th>Index</th>
-              <th>Date</th>
-              <th>Business Name</th>
+              <th>Rule</th>
+              <th>Window / Reason</th>
               <th>Dollar Amount</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={row.id}>
+              <tr key={`${row.name}-${index}`}>
                 <td>{index + 1}</td>
-                <td>{row.date || "No date"}</td>
-                <td>{row.business_name}</td>
-                <td className={row.spiff_applied ? "spiff-record-amount adjusted" : "spiff-record-amount"}>
-                  {money(row.amount || 0)}
-                </td>
+                <td>{row.name || "Overall SPIFF"}</td>
+                <td>{overallSpiffWindow(row)}</td>
+                <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -975,4 +1039,10 @@ function RecordTable({ title, rows }) {
       )}
     </section>
   );
+}
+
+function overallSpiffWindow(row) {
+  if (row.start_date || row.end_date) return `${row.start_date || ""}${row.end_date ? ` to ${row.end_date}` : ""}`;
+  if (row.date) return row.date;
+  return "Bonus applied";
 }
