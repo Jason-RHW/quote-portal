@@ -1056,7 +1056,6 @@ function OverallSpiffTable({ rows, total }) {
                 <thead>
                   <tr>
                     <th>Index</th>
-                    <th>Date / Window</th>
                     <th>Reason</th>
                     <th>Dollar Amount</th>
                   </tr>
@@ -1065,9 +1064,8 @@ function OverallSpiffTable({ rows, total }) {
                   {group.rows.map((row, index) => (
                     <tr key={`${group.name}-${index}`}>
                       <td>{index + 1}</td>
-                <td>{overallSpiffWindow(row)}</td>
-                <td>{overallSpiffReason(row, group.name)}</td>
-                <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
+                      <td>{overallSpiffReason(row, group.name)}</td>
+                      <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
                     </tr>
                   ))}
                 </tbody>
