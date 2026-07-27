@@ -166,7 +166,7 @@ function buildTraditionalRule(layer, start, end, index) {
     threshold_entity_type: layer.conditionType === "quote_value_gt" ? "quote" : "sample",
     qualification_scope: "individual",
     active_filter: "none",
-    eligible_statuses: ["requested", "sent", "delivered"],
+    eligible_statuses: ["requested", "sent", "delivered", "on_hold"],
     amount_per_sample: isQuote || isBonus ? null : amount,
     amount_per_quote: isQuote ? amount : null,
     quote_value_min: null,

@@ -162,7 +162,7 @@ Defaults when omitted:
 - amount_per_quote: only fill when the rule explicitly gives a quote rate. For "$3 per sample and $10 per quote",
   use amount_per_sample=3 and amount_per_quote=10.
 - quote_value_min: fill for rules like "$10 per quote for quote value > $200".
-- eligible_statuses: requested, sent, delivered.
+- eligible_statuses: requested, sent, delivered, on_hold.
 - included_sdr_names: [] means all SDRs with eligible samples.
 - tie_behavior: earliest qualifying sample timestamp wins for first_to_target; equal rank for leaderboard.
 
@@ -278,7 +278,7 @@ def _eligible_samples(db: Session, rule: Dict[str, Any]) -> tuple[Dict[str, Sdr]
     start = _parse_date(rule.get("start_date"))
     end = _parse_date(rule.get("end_date"))
     date_field = _sample_date_field(rule)
-    eligible_statuses = set(rule.get("eligible_statuses") or ["requested", "sent", "delivered"])
+    eligible_statuses = set(rule.get("eligible_statuses") or ["requested", "sent", "delivered", "on_hold"])
     included_names = {name.strip() for name in rule.get("included_sdr_names", []) if name.strip()}
     sdrs_by_id = {
         s.id: s
@@ -431,7 +431,7 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
         "entity_type": "both",
         "threshold_entity_type": "sample",
         "qualification_scope": "individual",
-        "eligible_statuses": ["requested", "sent", "delivered"],
+        "eligible_statuses": ["requested", "sent", "delivered", "on_hold"],
         "amount_per_sample": 1,
         "amount_per_quote": 3,
         "target_count": None,
@@ -551,7 +551,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
         "start_date": month_start.isoformat(),
         "end_date": month_end.isoformat(),
         "date_field": "created_at",
-        "eligible_statuses": ["requested", "sent", "delivered"],
+        "eligible_statuses": ["requested", "sent", "delivered", "on_hold"],
     }
     sdrs_by_id, samples_by_sdr = _eligible_samples(db, month_rule)
     quotes_by_sdr = _eligible_quotes(db, month_rule)
@@ -594,7 +594,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             for rule in rules:
                 entity_type = rule.get("entity_type") or "sample"
                 sample_rate, _ = _rule_rates(rule)
-                spiff_statuses = set(rule.get("eligible_statuses") or ["requested", "sent", "delivered"])
+                spiff_statuses = set(rule.get("eligible_statuses") or ["requested", "sent", "delivered", "on_hold"])
                 included_names = {name.strip() for name in rule.get("included_sdr_names", []) if name.strip()}
                 if not _name_included(sdr_name, included_names):
                     continue
