@@ -58,6 +58,7 @@ function ruleLabel(rule) {
     first_to_target: "First to target",
     first_to_targets: "First to milestones",
     leaderboard: "Leaderboard",
+    daily_leader_bonus: "Daily top SDR bonus",
     flat_plus_threshold: "Flat + threshold",
   };
   return labels[rule?.rule_type] || "Rule";
@@ -82,6 +83,7 @@ function ruleSummary(rule) {
   if (rule?.rule_type === "threshold_bonus") return `${money(rule.bonus_amount)} bonus if ${rule.target_count} ${entityLabel(rule)}`;
   if (rule?.rule_type === "first_to_target") return `${money(rule.bonus_amount)} first to ${rule.target_count} ${entityLabel(rule)}`;
   if (rule?.rule_type === "first_to_targets") return `${rule.first_to_targets?.length || 0} first-to-target milestone(s)`;
+  if (rule?.rule_type === "daily_leader_bonus") return `${money(rule.bonus_amount)} daily top SDR bonus`;
   return ruleLabel(rule);
 }
 
@@ -103,6 +105,9 @@ function plainUnderstanding(rule) {
   if (rule.rule_type === "first_to_targets") {
     const milestones = (rule.first_to_targets || []).map(item => `first to ${item.target_count} gets ${money(item.bonus_amount)}`).join("; ");
     return `From ${rule.start_date} to ${rule.end_date}, run multiple first-to-target milestones for ${entityLabel(rule)}: ${milestones}.`;
+  }
+  if (rule.rule_type === "daily_leader_bonus") {
+    return `From ${rule.start_date} to ${rule.end_date}, each day the SDR with the most eligible samples gets ${money(rule.bonus_amount)}. The contest resets daily, so the same SDR can win again on another day.`;
   }
   return `From ${rule.start_date} to ${rule.end_date}, apply a ${ruleLabel(rule).toLowerCase()} SPIFF to eligible ${entityLabel(rule)}.`;
 }
@@ -131,6 +136,12 @@ function exampleCalculation(rule) {
   }
   if (rule.rule_type === "first_to_targets") {
     return (rule.first_to_targets || []).map(item => `First SDR to ${item.target_count} eligible ${entityLabel(rule)} gets ${money(item.bonus_amount)}.`);
+  }
+  if (rule.rule_type === "daily_leader_bonus") {
+    return [
+      `Monday: SDR A has 6 samples, SDR B has 4, so SDR A gets ${money(rule.bonus_amount)}.`,
+      `Tuesday starts over; if SDR A is top again, SDR A gets another ${money(rule.bonus_amount)}.`,
+    ];
   }
   return ["Review the applied real-data preview below before confirming."];
 }
@@ -196,6 +207,20 @@ function buildTraditionalRule(layer, start, end, index) {
       target_count: Number(layer.conditionValue || 0),
       bonus_amount: amount,
       max_winners: 1,
+    };
+  }
+  if (layer.conditionType === "daily_top_samples") {
+    return {
+      ...base,
+      rule_type: "daily_leader_bonus",
+      entity_type: "sample",
+      threshold_entity_type: "sample",
+      amount_per_sample: null,
+      amount_per_quote: null,
+      target_count: null,
+      bonus_amount: amount,
+      max_winners: 1,
+      tie_behavior: "Highest sample count per day wins; ties break by earliest last sample timestamp, then SDR name.",
     };
   }
   if (layer.conditionType === "quote_value_gt") {
@@ -760,9 +785,10 @@ function TraditionalLayerRow({ layer, sdrOptions, canRemove, onChange, onRemove 
           <select value={layer.conditionType} onChange={e => update("conditionType", e.target.value)}>
             <option value="none">No condition</option>
             <option value="first_to_samples">First reach X samples</option>
+            <option value="daily_top_samples">Top SDR each day by samples</option>
             <option value="quote_value_gt">Quote value greater than X</option>
           </select>
-          {layer.conditionType !== "none" && (
+          {layer.conditionType !== "none" && layer.conditionType !== "daily_top_samples" && (
             <input
               type="number"
               min="0"

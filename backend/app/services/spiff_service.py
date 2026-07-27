@@ -82,7 +82,7 @@ RULE_SCHEMA = {
         "name": {"type": "string"},
         "rule_type": {
             "type": "string",
-            "enum": ["flat_rate", "threshold_bonus", "first_to_target", "first_to_targets", "leaderboard", "flat_plus_threshold"],
+            "enum": ["flat_rate", "threshold_bonus", "first_to_target", "first_to_targets", "leaderboard", "daily_leader_bonus", "flat_plus_threshold"],
         },
         "start_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
         "end_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
@@ -149,6 +149,8 @@ Supported rule types:
 - first_to_targets: multiple first-to-target milestones, such as "first to 25 gets $75, first to 30 gets $100".
   Fill first_to_targets with one object per milestone.
 - leaderboard: rank-based prizes; fill leaderboard_prizes.
+- daily_leader_bonus: for each day in the date range, the SDR with the most eligible samples that day gets bonus_amount.
+  Use this for rules like "each day, the top SDR sending out the most samples gets $X"; this is not a monthly total leaderboard.
 - flat_plus_threshold: amount_per_sample and/or amount_per_quote plus bonus_amount when target_count is reached.
 
 Defaults when omitted:
@@ -165,6 +167,7 @@ Defaults when omitted:
 - eligible_statuses: requested, sent, delivered, on_hold.
 - included_sdr_names: [] means all SDRs with eligible samples.
 - tie_behavior: earliest qualifying sample timestamp wins for first_to_target; equal rank for leaderboard.
+  For daily_leader_bonus, max_winners defaults to 1; ties are broken by earliest last sample timestamp, then SDR name.
 
 SPIFF rules replace the normal commission for the records they cover. For example, "$3 per sample today" means
 the payout is exactly $3 per sample, not the normal $1 plus $3.
@@ -202,6 +205,25 @@ def interpret_spiff_prompt(prompt: str) -> Dict[str, Any]:
     )
     rule = json.loads(response.output_text)
     lower_prompt = prompt.lower()
+    if (
+        ("each day" in lower_prompt or "per day" in lower_prompt or "daily" in lower_prompt)
+        and ("top" in lower_prompt or "most" in lower_prompt or "leader" in lower_prompt)
+        and "sample" in lower_prompt
+    ):
+        inferred_bonus = rule.get("bonus_amount") or rule.get("amount_per_sample") or rule.get("amount_per_quote")
+        rule["rule_type"] = "daily_leader_bonus"
+        rule["entity_type"] = "sample"
+        rule["threshold_entity_type"] = "sample"
+        rule["qualification_scope"] = "individual"
+        rule["amount_per_sample"] = None
+        rule["amount_per_quote"] = None
+        rule["target_count"] = None
+        rule["bonus_amount"] = inferred_bonus
+        rule["leaderboard_prizes"] = []
+        rule["max_winners"] = int(rule.get("max_winners") or 1)
+        if not rule.get("assumptions"):
+            rule["assumptions"] = []
+        rule["assumptions"].append("Interpreted as a daily SPIFF: each date has its own top-SDR winner by eligible sample count.")
     if (
         rule.get("rule_type") == "threshold_bonus"
         and ("total" in lower_prompt or "team" in lower_prompt or "all sdr" in lower_prompt)
@@ -566,10 +588,18 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             amount = float(row.get("spiff_payout") or 0)
             spiff_bonus_by_name[row["sdr_name"]] += amount
             if amount:
-                spiff_bonus_details_by_name[row["sdr_name"]].append({
-                    "name": rule_name,
-                    "amount": round(amount, 2),
-                })
+                daily_wins = row.get("daily_wins") or []
+                if daily_wins:
+                    for win in daily_wins:
+                        spiff_bonus_details_by_name[row["sdr_name"]].append({
+                            "name": f"{rule_name} ({win.get('date')})",
+                            "amount": round(float(win.get("amount") or 0), 2),
+                        })
+                else:
+                    spiff_bonus_details_by_name[row["sdr_name"]].append({
+                        "name": rule_name,
+                        "amount": round(amount, 2),
+                    })
 
     names = set(quotes_by_sdr)
     names.update(sdrs_by_id[sdr_id].full_name for sdr_id in samples_by_sdr)
@@ -843,6 +873,8 @@ def calculate_preview(db: Session, rule: Dict[str, Any]) -> Dict[str, Any]:
             reason = f"Reached {len(milestones)} first-to-target milestone(s)."
         elif rule_type == "leaderboard":
             reason = f"{count} eligible {unit_label}(s) for leaderboard ranking."
+        elif rule_type == "daily_leader_bonus":
+            reason = f"{sample_count} eligible sample(s) across daily top-SDR contests."
 
         results.append({
             "sdr_id": grouped["sdr_id"],
@@ -863,6 +895,7 @@ def calculate_preview(db: Session, rule: Dict[str, Any]) -> Dict[str, Any]:
             "reason": reason,
             "reached_at": reached_at.isoformat() if reached_at else None,
             "milestones": milestones if rule_type == "first_to_targets" else [],
+            "daily_wins": [],
             "samples": [_sample_payload(req, date_field) for req in samples],
             "quotes": [_quote_payload(q) for q in quotes],
         })
@@ -905,6 +938,42 @@ def calculate_preview(db: Session, rule: Dict[str, Any]) -> Dict[str, Any]:
                 r["reason"] += f" Rank #{idx}: ${prizes[idx]:,.2f}."
             else:
                 r["reason"] += f" Rank #{idx}; no prize configured."
+    elif rule_type == "daily_leader_bonus":
+        daily_entries: Dict[date, List[Dict[str, Any]]] = defaultdict(list)
+        for sdr_name, grouped in by_sdr.items():
+            samples_by_day: Dict[date, List[SampleRequest]] = defaultdict(list)
+            for sample in grouped["samples"]:
+                d = _date_value(sample, date_field)
+                if d:
+                    samples_by_day[d].append(sample)
+            for d, day_samples in samples_by_day.items():
+                day_samples.sort(key=lambda sample: (_timestamp_value(sample, date_field), sample.id))
+                daily_entries[d].append({
+                    "sdr_name": sdr_name,
+                    "sample_count": len(day_samples),
+                    "reached_at": _timestamp_value(day_samples[-1], date_field),
+                })
+        winners_by_name: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        daily_bonus = float(rule.get("bonus_amount") or 0)
+        for d, entries in daily_entries.items():
+            entries.sort(key=lambda item: (-item["sample_count"], item["reached_at"], item["sdr_name"]))
+            for winner in entries[:max_winners]:
+                winners_by_name[winner["sdr_name"]].append({
+                    "date": d.isoformat(),
+                    "sample_count": winner["sample_count"],
+                    "amount": round(daily_bonus, 2),
+                })
+        for r in results:
+            wins = winners_by_name.get(r["sdr_name"], [])
+            if wins:
+                bonus = daily_bonus * len(wins)
+                r["daily_wins"] = wins
+                r["payout_amount"] = round(float(r["payout_amount"]) + bonus, 2)
+                r["spiff_payout"] = round(float(r["spiff_payout"]) + bonus, 2)
+                dates = ", ".join(win["date"] for win in wins)
+                r["reason"] += f" Won {len(wins)} daily top-SDR contest(s) ({dates}): +${bonus:,.2f}."
+            else:
+                r["reason"] += " No daily top-SDR wins."
 
     results.sort(key=lambda r: (-r["payout_amount"], -r["eligible_sample_count"], r["sdr_name"]))
     return {
