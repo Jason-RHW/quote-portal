@@ -598,12 +598,23 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
                 if daily_wins:
                     for win in daily_wins:
                         spiff_bonus_details_by_name[row["sdr_name"]].append({
-                            "name": f"{rule_name} ({win.get('date')})",
+                            "name": rule_name,
+                            "start_date": win.get("start_date") or win.get("date"),
+                            "end_date": win.get("end_date") or win.get("date"),
+                            "reason": (
+                                f"Top SDR by samples across {win.get('start_date')} to {win.get('end_date')}"
+                                if win.get("rolled_over_days")
+                                else f"Top SDR by samples on {win.get('date')}"
+                            ),
                             "amount": round(float(win.get("amount") or 0), 2),
                         })
                 else:
+                    rule = rules[idx] or {}
                     spiff_bonus_details_by_name[row["sdr_name"]].append({
                         "name": rule_name,
+                        "start_date": rule.get("start_date"),
+                        "end_date": rule.get("end_date"),
+                        "reason": row.get("reason") or "Bonus applied",
                         "amount": round(amount, 2),
                     })
 

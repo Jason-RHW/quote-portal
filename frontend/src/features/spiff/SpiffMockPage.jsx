@@ -973,9 +973,17 @@ function groupRecordRows(rows, title) {
 function ruleGroupTitle(name, rule = {}) {
   const start = rule.start_date || rule.date;
   const end = rule.end_date;
-  if (start && end && start !== end) return `${name} · ${start} to ${end}`;
-  if (start) return `${name} · ${start}`;
-  return name;
+  const cleanName = stripDateFromRuleName(name);
+  if (start && end && start !== end) return `${cleanName} · ${start} to ${end}`;
+  if (start) return `${cleanName} · ${start}`;
+  return cleanName;
+}
+
+function stripDateFromRuleName(name = "") {
+  return String(name)
+    .replace(/\s*(?:on\s+)?[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4}\s*$/i, "")
+    .replace(/\s*\(?\d{4}-\d{2}-\d{2}\)?\s*$/i, "")
+    .trim();
 }
 
 function RecordGroups({ title, rows, total }) {
@@ -1057,9 +1065,9 @@ function OverallSpiffTable({ rows, total }) {
                   {group.rows.map((row, index) => (
                     <tr key={`${group.name}-${index}`}>
                       <td>{index + 1}</td>
-                      <td>{overallSpiffWindow(row)}</td>
-                      <td>{row.reason || row.name || "Bonus applied"}</td>
-                      <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
+                <td>{overallSpiffWindow(row)}</td>
+                <td>{overallSpiffReason(row, group.name)}</td>
+                <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1085,5 +1093,14 @@ function groupOverallSpiffRows(rows) {
 function overallSpiffWindow(row) {
   if (row.start_date || row.end_date) return `${row.start_date || ""}${row.end_date ? ` to ${row.end_date}` : ""}`;
   if (row.date) return row.date;
+  return "Bonus applied";
+}
+
+function overallSpiffReason(row, groupName) {
+  const cleanName = stripDateFromRuleName(row.name || "");
+  const cleanGroup = stripDateFromRuleName(groupName || "");
+  if (row.reason && stripDateFromRuleName(row.reason) !== cleanGroup) return row.reason;
+  if (row.start_date || row.end_date || row.date) return "Bonus applied for this window";
+  if (cleanName && cleanName !== cleanGroup) return cleanName;
   return "Bonus applied";
 }
