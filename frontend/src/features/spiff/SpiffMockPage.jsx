@@ -231,6 +231,7 @@ export default function SpiffMockPage() {
   const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -263,7 +264,7 @@ export default function SpiffMockPage() {
     return () => {
       ignore = true;
     };
-  }, [month]);
+  }, [month, refreshTick]);
 
   useEffect(() => {
     api.sdrs.list(false)
@@ -404,6 +405,9 @@ export default function SpiffMockPage() {
         </div>
         <div className="page-header-actions">
           <MonthPicker value={month} onChange={setMonth} />
+          <button className="btn-secondary" onClick={() => setRefreshTick(tick => tick + 1)} disabled={loading}>
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
           <button className="btn-secondary" onClick={() => setShowCampaignModal(true)}>
             Applied SPIFF Rules ({campaigns.length})
           </button>
