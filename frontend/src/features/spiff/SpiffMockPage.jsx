@@ -257,6 +257,7 @@ export default function SpiffMockPage() {
   const [stagedPreview, setStagedPreview] = useState(null);
   const [stagedRules, setStagedRules] = useState([]);
   const [detailRow, setDetailRow] = useState(null);
+  const [detailTab, setDetailTab] = useState("samples");
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState(null);
@@ -503,7 +504,7 @@ export default function SpiffMockPage() {
                     <td>{row.eligible_quote_count || 0}</td>
                     <td><CommissionAmount row={row} setHoverReason={setHoverReason} /></td>
                     <td>
-                      <button className="row-action-btn" onClick={() => setDetailRow(row)}>View list</button>
+                      <button className="row-action-btn" onClick={() => { setDetailRow(row); setDetailTab("samples"); }}>View list</button>
                     </td>
                   </tr>
                 ))}
@@ -590,10 +591,21 @@ export default function SpiffMockPage() {
               </div>
               <button className="modal-close" onClick={() => setDetailRow(null)}>x</button>
             </div>
+            <div className="spiff-detail-tabs">
+              <button className={detailTab === "samples" ? "active" : ""} onClick={() => setDetailTab("samples")}>
+                Samples <span>{detailRow.eligible_sample_count || 0}</span>
+              </button>
+              <button className={detailTab === "quotes" ? "active" : ""} onClick={() => setDetailTab("quotes")}>
+                Quotes <span>{detailRow.eligible_quote_count || 0}</span>
+              </button>
+              <button className={detailTab === "overall" ? "active" : ""} onClick={() => setDetailTab("overall")}>
+                Overall SPIFF <span>{money(detailRow.spiff_payout || 0)}</span>
+              </button>
+            </div>
             <div className="modal-body spiff-detail-body">
-              <RecordGroups title="Samples" rows={detailRow.samples || []} total={detailRow.sample_payout || 0} />
-              <RecordGroups title="Quotes" rows={detailRow.quotes || []} total={detailRow.quote_payout || 0} />
-              <OverallSpiffTable rows={detailRow.spiff_bonus_details || []} total={detailRow.spiff_payout || 0} />
+              {detailTab === "samples" && <RecordGroups title="Samples" rows={detailRow.samples || []} total={detailRow.sample_payout || 0} />}
+              {detailTab === "quotes" && <RecordGroups title="Quotes" rows={detailRow.quotes || []} total={detailRow.quote_payout || 0} />}
+              {detailTab === "overall" && <OverallSpiffTable rows={detailRow.spiff_bonus_details || []} total={detailRow.spiff_payout || 0} />}
             </div>
           </div>
         </div>

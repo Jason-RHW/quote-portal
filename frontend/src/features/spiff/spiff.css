@@ -139,8 +139,41 @@
   font-size: 12px;
 }
 .spiff-total-line strong { color: var(--text-primary); font-size: 16px; font-variant-numeric: tabular-nums; }
-.spiff-detail-modal { width: min(1040px, 94vw); }
-.spiff-detail-body { display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow: auto; }
+.spiff-detail-modal { width: min(1040px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
+.spiff-detail-modal .modal-header { flex-shrink: 0; }
+.spiff-detail-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 10px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.spiff-detail-tabs button {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.spiff-detail-tabs button.active {
+  border-color: #93C5FD;
+  background: #DBEAFE;
+  color: #1D4ED8;
+}
+.spiff-detail-tabs span {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+.spiff-detail-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; padding-bottom: 16px; }
 .spiff-record-section {
   min-width: 0;
   border: 0.5px solid var(--border-subtle);
