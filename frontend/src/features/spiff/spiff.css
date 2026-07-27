@@ -76,7 +76,7 @@
 .spiff-results-header { padding: 13px 16px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-shrink: 0; }
 .spiff-results-header.compact { padding-bottom: 0; }
 .spiff-campaign-card { flex-shrink: 0; margin-bottom: 12px; }
-.spiff-campaign-modal { width: min(760px, 94vw); }
+.spiff-campaign-modal { width: min(760px, 94vw); height: min(620px, 82vh); }
 .spiff-confirm-modal { width: min(520px, 94vw); }
 .spiff-campaign-list { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 14px; }
 .spiff-campaign-row {
@@ -139,7 +139,7 @@
   font-size: 12px;
 }
 .spiff-total-line strong { color: var(--text-primary); font-size: 16px; font-variant-numeric: tabular-nums; }
-.spiff-detail-modal { width: min(1040px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
+.spiff-detail-modal { width: min(1120px, 94vw); height: min(780px, 88vh); display: flex; flex-direction: column; }
 .spiff-detail-modal .modal-header { flex-shrink: 0; }
 .spiff-detail-tabs {
   display: flex;
@@ -173,7 +173,7 @@
   font-variant-numeric: tabular-nums;
   font-weight: 800;
 }
-.spiff-detail-body { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; padding-bottom: 16px; }
+.spiff-detail-body { display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; overflow: auto; padding-bottom: 16px; }
 .spiff-record-section {
   min-width: 0;
   border: 0.5px solid var(--border-subtle);
@@ -215,7 +215,7 @@
 .spiff-record-section .spiff-empty { margin: 12px; }
 .spiff-record-amount { color: var(--status-fulfilled-text); font-weight: 700; font-variant-numeric: tabular-nums; }
 .spiff-record-amount.adjusted { color: #6D28D9; }
-.spiff-rule-modal { width: min(900px, 94vw); }
+.spiff-rule-modal { width: min(900px, 94vw); height: min(780px, 88vh); }
 .spiff-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .spiff-tabs {
   display: inline-flex;
@@ -363,7 +363,7 @@
 .spiff-empty { color: var(--text-muted); background: var(--surface-subtle); border: 0.5px dashed var(--border); border-radius: 6px; padding: 14px; font-size: 12px; line-height: 1.45; }
 
 @media (max-width: 1040px) {
-  .spiff-detail-body { grid-template-columns: 1fr; }
+  .spiff-detail-modal { width: 94vw; height: 86vh; }
   .spiff-traditional-row { grid-template-columns: 1fr; }
   .spiff-condition-inputs { grid-template-columns: 1fr; }
 }

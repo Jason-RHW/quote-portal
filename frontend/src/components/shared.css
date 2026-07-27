@@ -159,12 +159,14 @@
 .modal-box {
   background: var(--surface-card); border-radius: 10px;
   width: 580px; max-width: 94vw; max-height: 88vh;
-  overflow-y: auto; border: 0.5px solid var(--border);
+  overflow: hidden; border: 0.5px solid var(--border);
+  display: flex; flex-direction: column;
 }
+.modal-box > form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .modal-header {
   padding: 16px 20px; border-bottom: 0.5px solid var(--border);
   display: flex; justify-content: space-between; align-items: flex-start;
-  position: sticky; top: 0; background: var(--surface-card); z-index: 1;
+  flex-shrink: 0; background: var(--surface-card); z-index: 1;
 }
 .modal-title    { font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0 0 2px; }
 .modal-subtitle { font-size: 12px; color: var(--text-muted); margin: 0; }
@@ -173,12 +175,12 @@
   cursor: pointer; font-size: 18px; line-height: 1; padding: 2px;
 }
 .modal-close:hover { color: var(--text-secondary); }
-.modal-body   { padding: 20px; }
+.modal-body   { padding: 20px; flex: 1; min-height: 0; overflow: auto; }
 .modal-footer {
   padding: 12px 20px; border-top: 0.5px solid var(--border);
   display: flex; justify-content: flex-end; gap: 8px;
   background: var(--surface-subtle);
-  position: sticky; bottom: 0;
+  flex-shrink: 0;
 }
 
 /* ── Form ──────────────────────────── */
