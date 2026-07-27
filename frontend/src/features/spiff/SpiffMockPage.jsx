@@ -960,7 +960,7 @@ function groupRecordRows(rows, title) {
   const groups = new Map();
   rows.forEach(row => {
     const campaigns = row.spiff_campaigns?.length
-      ? row.spiff_campaigns.map(campaign => campaign.name || "SPIFF Rule")
+      ? row.spiff_campaigns.map(campaign => ruleGroupTitle(campaign.name || "SPIFF Rule", campaign))
       : [row.spiff_applied ? "SPIFF adjusted records" : `Base Commission · ${title === "Quotes" ? "$3/quote" : "$1/sample"}`];
     campaigns.forEach(name => {
       if (!groups.has(name)) groups.set(name, []);
@@ -968,6 +968,14 @@ function groupRecordRows(rows, title) {
     });
   });
   return Array.from(groups, ([name, groupedRows]) => ({ name, rows: groupedRows }));
+}
+
+function ruleGroupTitle(name, rule = {}) {
+  const start = rule.start_date || rule.date;
+  const end = rule.end_date;
+  if (start && end && start !== end) return `${name} · ${start} to ${end}`;
+  if (start) return `${name} · ${start}`;
+  return name;
 }
 
 function RecordGroups({ title, rows, total }) {
@@ -1019,6 +1027,7 @@ function RecordGroups({ title, rows, total }) {
 }
 
 function OverallSpiffTable({ rows, total }) {
+  const groups = groupOverallSpiffRows(rows);
   return (
     <section className="spiff-record-section">
       <div className="spiff-section-heading">
@@ -1028,29 +1037,49 @@ function OverallSpiffTable({ rows, total }) {
       {rows.length === 0 ? (
         <div className="spiff-empty">No overall SPIFF bonuses in this period.</div>
       ) : (
-        <table className="data-table spiff-record-table">
-          <thead>
-            <tr>
-              <th>Index</th>
-              <th>Rule</th>
-              <th>Window / Reason</th>
-              <th>Dollar Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={`${row.name}-${index}`}>
-                <td>{index + 1}</td>
-                <td>{row.name || "Overall SPIFF"}</td>
-                <td>{overallSpiffWindow(row)}</td>
-                <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="spiff-record-groups">
+          {groups.map(group => (
+            <div className="spiff-record-group" key={group.name}>
+              <div className="spiff-record-group-title">
+                <span>{group.name}</span>
+                <strong>{money(group.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</strong>
+              </div>
+              <table className="data-table spiff-record-table">
+                <thead>
+                  <tr>
+                    <th>Index</th>
+                    <th>Date / Window</th>
+                    <th>Reason</th>
+                    <th>Dollar Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row, index) => (
+                    <tr key={`${group.name}-${index}`}>
+                      <td>{index + 1}</td>
+                      <td>{overallSpiffWindow(row)}</td>
+                      <td>{row.reason || row.name || "Bonus applied"}</td>
+                      <td className="spiff-record-amount adjusted">{money(row.amount || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
+}
+
+function groupOverallSpiffRows(rows) {
+  const groups = new Map();
+  rows.forEach(row => {
+    const name = ruleGroupTitle(row.name || "Overall SPIFF", row);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(row);
+  });
+  return Array.from(groups, ([name, groupedRows]) => ({ name, rows: groupedRows }));
 }
 
 function overallSpiffWindow(row) {

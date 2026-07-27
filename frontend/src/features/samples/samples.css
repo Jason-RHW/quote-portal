@@ -301,7 +301,7 @@ tr.row-stale:hover td { background: #FFF5F5; }
 }
 
 /* ── Wide sample record manager overlay ── */
-.sample-manager-modal { width: min(1380px, 96vw); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+.sample-manager-modal { width: min(1380px, 96vw); height: calc(100vh - 48px); max-height: 900px; display: flex; flex-direction: column; overflow: hidden; }
 .sample-manager-modal .modal-header,
 .sample-manager-modal .modal-footer { flex-shrink: 0; }
 .manager-toolbar { display: flex; align-items: flex-end; gap: 10px; padding: 12px 18px; border-bottom: 0.5px solid var(--border); background: var(--surface-card); flex-shrink: 0; }
@@ -310,7 +310,7 @@ tr.row-stale:hover td { background: #FFF5F5; }
 .manager-filter { width: 170px; margin: 0; }
 .manager-clear { height: 34px; }
 .manager-count { margin-left: auto; font-size: 12px; color: var(--text-muted); padding-bottom: 8px; }
-.sample-manager-table-wrap { overflow: auto; flex: 1; }
+.sample-manager-table-wrap { overflow: auto; flex: 1; min-height: 0; }
 .sample-manager-table { min-width: 1320px; table-layout: auto; }
 .sample-manager-table th,
 .sample-manager-table td { text-align: center; max-width: 190px; }

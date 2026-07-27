@@ -651,6 +651,8 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
                     amount += delta
                     campaigns.append({
                         "name": rule.get("name") or "SPIFF",
+                        "start_date": rule.get("start_date"),
+                        "end_date": rule.get("end_date"),
                         "delta": round(delta, 2),
                         "rate": round(sample_rate, 2),
                     })
@@ -687,6 +689,8 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
                     amount += delta
                     campaigns.append({
                         "name": rule.get("name") or "SPIFF",
+                        "start_date": rule.get("start_date"),
+                        "end_date": rule.get("end_date"),
                         "delta": round(delta, 2),
                         "rate": round(quote_rate, 2),
                     })

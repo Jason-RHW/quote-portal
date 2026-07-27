@@ -25,6 +25,12 @@ const NAV = [
 export default function App() {
   const { authenticated, logout, ready } = useAuth();
   const [tab, setTab] = useState("quotes");
+  const [visitedTabs, setVisitedTabs] = useState(["quotes"]);
+
+  function showTab(nextTab) {
+    setTab(nextTab);
+    setVisitedTabs(prev => prev.includes(nextTab) ? prev : [...prev, nextTab]);
+  }
 
   if (!ready) return null;
   if (!authenticated) return <LoginPage />;
@@ -44,44 +50,48 @@ export default function App() {
         <nav className="app-sidebar">
           <div className="sidebar-group-label">Sales</div>
           {NAV.slice(0, 3).map(item => (
-            <button key={item.key} className={`sidebar-item ${tab===item.key?"active":""}`} onClick={() => setTab(item.key)}>
+            <button key={item.key} className={`sidebar-item ${tab===item.key?"active":""}`} onClick={() => showTab(item.key)}>
               {item.icon}{item.label}
             </button>
           ))}
           <div className="sidebar-group-label">Samples</div>
-          <button className={`sidebar-item ${tab==="samples"?"active":""}`} onClick={() => setTab("samples")}>
+          <button className={`sidebar-item ${tab==="samples"?"active":""}`} onClick={() => showTab("samples")}>
             <BoxIcon />Samples
           </button>
           <div className="sidebar-group-label">Analytics</div>
-          <button className={`sidebar-item ${tab==="dashboard"?"active":""}`} onClick={() => setTab("dashboard")}>
+          <button className={`sidebar-item ${tab==="dashboard"?"active":""}`} onClick={() => showTab("dashboard")}>
             <ChartIcon />Dashboard
           </button>
-          <button className={`sidebar-item ${tab==="sdr-performance"?"active":""}`} onClick={() => setTab("sdr-performance")}>
+          <button className={`sidebar-item ${tab==="sdr-performance"?"active":""}`} onClick={() => showTab("sdr-performance")}>
             <PulseIcon />SDR Performance
           </button>
-          <button className={`sidebar-item ${tab==="spiff"?"active":""}`} onClick={() => setTab("spiff")}>
+          <button className={`sidebar-item ${tab==="spiff"?"active":""}`} onClick={() => showTab("spiff")}>
             <CalculatorIcon />SDR Commission
           </button>
           <div className="sidebar-bottom">
-            <button className={`sidebar-item ${tab==="sample-settings"?"active":""}`} onClick={() => setTab("sample-settings")}>
+            <button className={`sidebar-item ${tab==="sample-settings"?"active":""}`} onClick={() => showTab("sample-settings")}>
               <GearIcon />Settings
             </button>
           </div>
         </nav>
 
         <main className="app-main">
-          {tab === "quotes"    && <QuotesPage />}
-          {tab === "pos"       && <POsPage />}
-          {tab === "accounts"  && <AccountsPage />}
-          {tab === "samples"   && <SamplesPage />}
-          {tab === "sample-settings" && <SettingsPage />}
-          {tab === "dashboard" && <DashboardPage />}
-          {tab === "sdr-performance" && <SdrPerformancePage />}
-          {tab === "spiff" && <SpiffMockPage />}
+          {visitedTabs.includes("quotes") && <PageSlot active={tab === "quotes"}><QuotesPage /></PageSlot>}
+          {visitedTabs.includes("pos") && <PageSlot active={tab === "pos"}><POsPage /></PageSlot>}
+          {visitedTabs.includes("accounts") && <PageSlot active={tab === "accounts"}><AccountsPage /></PageSlot>}
+          {visitedTabs.includes("samples") && <PageSlot active={tab === "samples"}><SamplesPage /></PageSlot>}
+          {visitedTabs.includes("sample-settings") && <PageSlot active={tab === "sample-settings"}><SettingsPage /></PageSlot>}
+          {visitedTabs.includes("dashboard") && <PageSlot active={tab === "dashboard"}><DashboardPage /></PageSlot>}
+          {visitedTabs.includes("sdr-performance") && <PageSlot active={tab === "sdr-performance"}><SdrPerformancePage /></PageSlot>}
+          {visitedTabs.includes("spiff") && <PageSlot active={tab === "spiff"}><SpiffMockPage /></PageSlot>}
         </main>
       </div>
     </div>
   );
+}
+
+function PageSlot({ active, children }) {
+  return <div className={`page-slot ${active ? "active" : ""}`}>{children}</div>;
 }
 
 function GearIcon() {

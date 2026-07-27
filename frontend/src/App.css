@@ -58,4 +58,9 @@
 
 /* ── Main content ──────────────────────────── */
 .app-main { flex: 1; padding: 24px 28px; min-width: 0; min-height: 0; overflow: auto; }
-.app-main:has(.samples-page) { overflow: hidden; }
+.app-main:has(.page-slot.active .samples-page),
+.app-main:has(.page-slot.active .spiff-page) { overflow: hidden; }
+.page-slot { display: none; min-width: 0; min-height: 0; height: 100%; }
+.page-slot.active { display: block; }
+.page-slot.active:has(.samples-page),
+.page-slot.active:has(.spiff-page) { height: 100%; }
