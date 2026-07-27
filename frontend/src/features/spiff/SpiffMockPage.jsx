@@ -1004,7 +1004,7 @@ function RecordGroups({ title, rows, total }) {
                 <span>{group.name}</span>
                 <strong>{money(group.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</strong>
               </div>
-              <table className="data-table spiff-record-table spiff-overall-table">
+              <table className="data-table spiff-record-table">
                 <thead>
                   <tr>
                     <th>Index</th>
@@ -1052,7 +1052,7 @@ function OverallSpiffTable({ rows, total }) {
                 <span>{group.name}</span>
                 <strong>{money(group.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</strong>
               </div>
-              <table className="data-table spiff-record-table">
+              <table className="data-table spiff-record-table spiff-overall-table">
                 <thead>
                   <tr>
                     <th>Index</th>
