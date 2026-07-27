@@ -58,7 +58,8 @@
 
 /* ── Main content ──────────────────────────── */
 .app-main { flex: 1; padding: 24px 28px; min-width: 0; min-height: 0; overflow: auto; }
-.app-main:has(.page-slot.active.internal-scroll) { overflow: hidden; }
-.page-slot { display: none; min-width: 0; min-height: 100%; }
-.page-slot.active { display: block; }
+.app-main.normal-scroll { overflow: auto; }
+.app-main.internal-scroll { overflow: hidden; }
+.page-slot { display: none; min-width: 0; min-height: 100%; height: auto; overflow: visible; }
+.page-slot.active { display: block; height: auto; overflow: visible; }
 .page-slot.active.internal-scroll { height: 100%; min-height: 0; overflow: hidden; }

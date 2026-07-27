@@ -21,6 +21,7 @@ const NAV = [
   { key: "sdr-performance", label: "SDR Performance", icon: <PulseIcon /> },
   { key: "spiff", label: "SDR Commission", icon: <CalculatorIcon /> },
 ];
+const INTERNAL_SCROLL_TABS = new Set(["samples", "spiff"]);
 
 export default function App() {
   const { authenticated, logout, ready } = useAuth();
@@ -75,7 +76,7 @@ export default function App() {
           </div>
         </nav>
 
-        <main className="app-main">
+        <main className={`app-main ${INTERNAL_SCROLL_TABS.has(tab) ? "internal-scroll" : "normal-scroll"}`}>
           {visitedTabs.includes("quotes") && <PageSlot active={tab === "quotes"}><QuotesPage /></PageSlot>}
           {visitedTabs.includes("pos") && <PageSlot active={tab === "pos"}><POsPage /></PageSlot>}
           {visitedTabs.includes("accounts") && <PageSlot active={tab === "accounts"}><AccountsPage /></PageSlot>}

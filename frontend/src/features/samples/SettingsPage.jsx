@@ -261,7 +261,7 @@ export default function SettingsPage() {
   useEffect(() => { reload(); }, []);
 
   return (
-    <div>
+    <div className="settings-page">
       <div className="page-header">
         <div>
           <p className="page-title">Settings</p>
