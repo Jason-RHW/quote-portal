@@ -20,7 +20,6 @@
 .list-page .page-header,
 .list-page .summary-cards,
 .list-page .error-banner { flex-shrink: 0; }
-.app-main:has(.list-page) { overflow: hidden; }
 .record-list-card { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .record-list-scroll { flex: 1; min-height: 0; overflow: auto; }
 .record-list-scroll .data-table thead th {
