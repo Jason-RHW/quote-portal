@@ -30,6 +30,14 @@ APP_PASSWORD_HASH = os.getenv("APP_PASSWORD_HASH", "")
 APP_PASSWORD_PLAINTEXT = os.getenv("APP_PASSWORD", "demo1234")
 
 
+def _is_production() -> bool:
+    return (
+        os.getenv("VERCEL") == "1"
+        or os.getenv("ENVIRONMENT", "").lower() == "production"
+        or os.getenv("APP_ENV", "").lower() == "production"
+    )
+
+
 def check_password(plain: str) -> bool:
     if APP_PASSWORD_HASH:
         return pwd_context.verify(plain, APP_PASSWORD_HASH)
@@ -64,6 +72,26 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_sche
 SDR_FORM_CODE_HASH = os.getenv("SDR_FORM_CODE_HASH", "")
 SDR_FORM_CODE_PLAINTEXT = os.getenv("SDR_FORM_CODE")
 SDR_TOKEN_EXPIRE_HOURS = 12
+
+
+def _validate_production_auth_config() -> None:
+    if not _is_production():
+        return
+    missing = []
+    if not os.getenv("SECRET_KEY") or SECRET_KEY == "dev-secret-change-before-deploying":
+        missing.append("SECRET_KEY")
+    if not APP_PASSWORD_HASH:
+        missing.append("APP_PASSWORD_HASH")
+    if not SDR_FORM_CODE_HASH and not SDR_FORM_CODE_PLAINTEXT:
+        missing.append("SDR_FORM_CODE_HASH or SDR_FORM_CODE")
+    if missing:
+        raise RuntimeError(
+            "Unsafe production auth configuration. Set these backend environment variables: "
+            + ", ".join(missing)
+        )
+
+
+_validate_production_auth_config()
 
 
 def check_sdr_code(plain: str) -> bool:
