@@ -336,7 +336,7 @@ class FormFieldOut(FormFieldBase):
 
 # ── SDR-facing submission (public endpoint, gated by SDR access code, not admin JWT) ──
 class SampleRequestSubmit(BaseModel):
-    sdr_id: Optional[str] = None   # None allowed — "None" option on the form
+    sdr_id: Optional[str] = None   # Required by the public submit service; optional here keeps admin/backfill schemas flexible.
     contact_name: Optional[str] = None
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None

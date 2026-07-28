@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, setToken, clearToken, hasToken } from "./api";
-import { formatName, formatEmail, formatPhone, formatState, cityMatches, stateMatches } from "./normalize";
+import { api, setToken, hasToken } from "./api";
+import { formatName, formatEmail, formatPhone, cityMatches, stateMatches } from "./normalize";
 
 // ── Compact multi-select dropdown (Glove Type, Color — any field_type
 // "dropdown" with multiple=true from the Form Builder) ──
@@ -125,7 +125,7 @@ function ColorCheckboxGroup({ options, value, onChange }) {
 }
 
 // ── City/State autocomplete input ──
-function Autocomplete({ value, onChange, onSelect, matcher, placeholder, renderOption }) {
+function Autocomplete({ value, onChange, onSelect, matcher, placeholder, renderOption, required = false }) {
   const [open, setOpen] = useState(false);
   const matches = matcher(value);
   return (
@@ -133,6 +133,7 @@ function Autocomplete({ value, onChange, onSelect, matcher, placeholder, renderO
       <input
         value={value}
         placeholder={placeholder}
+        required={required}
         autoComplete="off"
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
@@ -191,6 +192,21 @@ function LoginGate({ onLoggedIn }) {
 }
 
 const CHECKBOX_GROUP_FIELD_KEYS = new Set(["size", "employee_count", "daily_changes"]);
+const REQUIRED_CORE_FIELDS = [
+  ["sdr_id", "Your name"],
+  ["contact_name", "Contact full name"],
+  ["contact_email", "Email"],
+  ["business_name", "Business name"],
+  ["address_line", "Address"],
+  ["city", "City"],
+  ["state", "State"],
+  ["zip_code", "Zip code"],
+];
+
+function hasValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return value != null && String(value).trim() !== "";
+}
 
 function CustomField({ field, value, onChange }) {
   if (field.field_key === "glove_type") {
@@ -242,9 +258,19 @@ function RequestForm() {
 
   function setCoreField(k, v) { setCore(c => ({ ...c, [k]: v })); }
 
+  function validateRequiredFields() {
+    for (const [key, label] of REQUIRED_CORE_FIELDS) {
+      if (!hasValue(core[key])) return `${label} is required.`;
+    }
+    const missingCustom = fields.find(field => field.required && !hasValue(customValues[field.field_key]));
+    if (missingCustom) return `${missingCustom.label} is required.`;
+    return "";
+  }
+
   async function submit(e) {
     e.preventDefault();
-    if (!core.business_name.trim()) { setError("Business name is required."); return; }
+    const validationError = validateRequiredFields();
+    if (validationError) { setError(validationError); return; }
     setSubmitting(true);
     setError(null);
     try {
@@ -301,8 +327,8 @@ function RequestForm() {
         <div className="form-grid form-grid-2">
           <div className="form-field">
             <label>Your name</label>
-            <select value={core.sdr_id} onChange={e => setCoreField("sdr_id", e.target.value)}>
-              <option value="">None</option>
+            <select value={core.sdr_id} onChange={e => setCoreField("sdr_id", e.target.value)} required>
+              <option value="">Select your name…</option>
               {sdrs.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
             </select>
           </div>
@@ -317,11 +343,13 @@ function RequestForm() {
           <div className="form-field">
             <label>Contact full name</label>
             <input value={core.contact_name} onChange={e => setCoreField("contact_name", e.target.value)}
+              required
               onBlur={e => { if (e.target.value.trim()) setCoreField("contact_name", formatName(e.target.value)); }} />
           </div>
           <div className="form-field">
             <label>Email</label>
             <input value={core.contact_email} onChange={e => setCoreField("contact_email", e.target.value)}
+              required
               onBlur={e => { if (e.target.value.trim()) setCoreField("contact_email", formatEmail(e.target.value)); }} />
           </div>
           <div className="form-field">
@@ -331,11 +359,11 @@ function RequestForm() {
           </div>
           <div className="form-field">
             <label>Business name</label>
-            <input value={core.business_name} onChange={e => setCoreField("business_name", e.target.value)} />
+            <input value={core.business_name} onChange={e => setCoreField("business_name", e.target.value)} required />
           </div>
           <div className="form-field full">
             <label>Address</label>
-            <input value={core.address_line} onChange={e => setCoreField("address_line", e.target.value)} placeholder="Street address" />
+            <input value={core.address_line} onChange={e => setCoreField("address_line", e.target.value)} placeholder="Street address" required />
           </div>
           <div className="form-field">
             <label>City</label>
@@ -345,6 +373,7 @@ function RequestForm() {
               onSelect={(m) => { setCoreField("city", m.c); setCoreField("state", m.s); }}
               matcher={cityMatches}
               placeholder="City"
+              required
               renderOption={(m) => <>{m.c} <span className="ac-state">{m.s}</span></>}
             />
           </div>
@@ -356,12 +385,13 @@ function RequestForm() {
               onSelect={(m) => setCoreField("state", m.abbr)}
               matcher={stateMatches}
               placeholder="CA"
+              required
               renderOption={(m) => <>{m.name} <span className="ac-state">{m.abbr}</span></>}
             />
           </div>
           <div className="form-field">
             <label>Zip code</label>
-            <input value={core.zip_code} onChange={e => setCoreField("zip_code", e.target.value)} placeholder="90001" />
+            <input value={core.zip_code} onChange={e => setCoreField("zip_code", e.target.value)} placeholder="90001" required />
           </div>
         </div>
 

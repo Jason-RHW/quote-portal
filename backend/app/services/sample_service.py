@@ -151,7 +151,47 @@ def _run_verification_best_effort(db: Session, req: SampleRequest):
 
 # ── Create (SDR-facing form — public endpoint) ──
 
+class SampleRequestValidationError(Exception):
+    pass
+
+
+REQUIRED_SUBMIT_FIELDS = [
+    ("sdr_id", "Requested by (SDR)"),
+    ("contact_name", "Contact full name"),
+    ("contact_email", "Email"),
+    ("business_name", "Business name"),
+    ("address_line", "Address"),
+    ("city", "City"),
+    ("state", "State"),
+    ("zip_code", "Zip code"),
+]
+
+
+def _has_required_value(value) -> bool:
+    if isinstance(value, list):
+        return len(value) > 0
+    return value is not None and str(value).strip() != ""
+
+
+def _validate_public_submission(db: Session, data: SampleRequestSubmit) -> None:
+    for field, label in REQUIRED_SUBMIT_FIELDS:
+        if not _has_required_value(getattr(data, field, None)):
+            raise SampleRequestValidationError(f"{label} is required.")
+
+    custom_fields = data.custom_fields or {}
+    required_custom_fields = (
+        db.query(FormField)
+        .filter(FormField.active.is_(True), FormField.required.is_(True))
+        .order_by(FormField.sort_order)
+        .all()
+    )
+    for field in required_custom_fields:
+        if not _has_required_value(custom_fields.get(field.field_key)):
+            raise SampleRequestValidationError(f"{field.label} is required.")
+
+
 def submit_sample_request(db: Session, data: SampleRequestSubmit) -> SampleRequest:
+    _validate_public_submission(db, data)
     req = SampleRequest(
         id=gen_id(),
         sdr_id=data.sdr_id,

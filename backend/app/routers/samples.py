@@ -239,7 +239,10 @@ def submit(
     db: Session = Depends(get_db),
     _=Depends(verify_sdr_token),
 ):
-    req = sample_service.submit_sample_request(db, data)
+    try:
+        req = sample_service.submit_sample_request(db, data)
+    except sample_service.SampleRequestValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     # HubSpot matching/creation runs after the response is sent so the SDR
     # doesn't wait on it; the cron-driven batch_sync_requested_to_hubspot
     # safety net catches anything this doesn't finish (see cron.py).

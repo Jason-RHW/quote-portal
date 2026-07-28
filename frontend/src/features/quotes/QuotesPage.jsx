@@ -67,10 +67,10 @@ export default function QuotesPage() {
 
   // Sync selected drawer quote after refresh
   useEffect(() => {
-    if (selected) {
-      const fresh = quotes.find(q => q.id === selected.id);
-      if (fresh) setSelected(fresh);
-    }
+    setSelected(current => {
+      if (!current) return current;
+      return quotes.find(q => q.id === current.id) || current;
+    });
   }, [quotes]);
 
   async function handleSave(payload) {
