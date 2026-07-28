@@ -24,17 +24,12 @@ function money(value) {
   return `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function signedMoney(value) {
-  const n = Number(value || 0);
-  return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 function bonusBreakdown(details = [], total = 0) {
   if (details.length > 0) return details.map(item => money(item.amount)).join(" + ");
   return money(total);
 }
 
-function recordFormula(records = [], baseRate) {
+function recordFormula(records = []) {
   const baseCount = records.filter(record => !record.spiff_applied).length;
   const spiffGroups = records
     .filter(record => record.spiff_applied)
@@ -922,8 +917,8 @@ function CommissionAmount({ row, setHoverReason }) {
 
 function ReasonCard({ data }) {
   const { row, left, top } = data;
-  const sampleFormula = recordFormula(row.samples, 1);
-  const quoteFormula = recordFormula(row.quotes, 3);
+  const sampleFormula = recordFormula(row.samples);
+  const quoteFormula = recordFormula(row.quotes);
   return (
     <div className="spiff-reason-card" style={{ left, top }}>
       <div className="spiff-reason-title">Calculation</div>
@@ -1086,12 +1081,6 @@ function groupOverallSpiffRows(rows) {
     groups.get(name).push(row);
   });
   return Array.from(groups, ([name, groupedRows]) => ({ name, rows: groupedRows }));
-}
-
-function overallSpiffWindow(row) {
-  if (row.start_date || row.end_date) return `${row.start_date || ""}${row.end_date ? ` to ${row.end_date}` : ""}`;
-  if (row.date) return row.date;
-  return "Bonus applied";
 }
 
 function overallSpiffReason(row, groupName) {
