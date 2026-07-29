@@ -448,7 +448,7 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
             row += 1
         data_end_row = row - 1
 
-        label = f"{sdr} Subtotal"
+        label = f"{sdr} Additional Prize"
         ws.cell(row=row, column=AMOUNT_COL - 1, value=label).font = SUBTOTAL_FONT
         _set_col_width(widths, AMOUNT_COL - 1, label)
         col_letter = get_column_letter(AMOUNT_COL)
