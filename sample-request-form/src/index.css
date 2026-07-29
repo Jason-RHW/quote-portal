@@ -12,6 +12,13 @@ body { margin: 0; font-family: var(--font); font-size: 14px; color: var(--text-p
 button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; font-size: 14px; }
 
+button:disabled, select:disabled, input:disabled, textarea:disabled { cursor: not-allowed; }
+select { cursor: pointer; }
+input[type="checkbox"], input[type="radio"] { cursor: pointer; }
+input:not([type="checkbox"]):not([type="radio"]):not(:disabled),
+textarea:not(:disabled) { cursor: text; }
+label { cursor: pointer; }
+
 /* Login gate */
 .login-page { min-height: 100vh; background: var(--navy-900); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
 .login-card { background: #fff; border-radius: 12px; width: 100%; max-width: 400px; padding: 40px 36px 32px; }

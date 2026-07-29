@@ -44,3 +44,10 @@ body {
 button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; font-size: 14px; }
 table { border-collapse: collapse; width: 100%; }
+
+button:disabled, select:disabled, input:disabled, textarea:disabled { cursor: not-allowed; }
+select { cursor: pointer; }
+input[type="checkbox"], input[type="radio"] { cursor: pointer; }
+input:not([type="checkbox"]):not([type="radio"]):not(:disabled),
+textarea:not(:disabled) { cursor: text; }
+label { cursor: pointer; }

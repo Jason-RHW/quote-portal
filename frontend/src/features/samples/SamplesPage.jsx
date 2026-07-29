@@ -495,7 +495,7 @@ export default function SamplesPage() {
                   const age = daysAgo(recordDate(r));
                   const stale = (r.status === "requested" || r.status === "on_hold") && age >= 3;
                   return (
-                    <tr key={r.id} className={`${stale ? "row-stale" : ""} ${selectedIds.includes(r.id) ? "selected" : ""}`} onClick={() => setOpenId(r.id)}>
+                    <tr key={r.id} className={`${stale ? "row-stale" : ""} ${selectedIds.includes(r.id) ? "selected" : ""}`} style={{ cursor: "pointer" }} onClick={() => setOpenId(r.id)}>
                       <td className="checkcol" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => toggleSelect(r.id)} /></td>
                       <td>{(sdrsById[r.sdr_id]?.full_name || "—").trim()}</td>
                       <td className="col-name">
