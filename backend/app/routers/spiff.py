@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services import spiff_service
+from app.services import commission_export_service, spiff_service
 
 router = APIRouter(prefix="/api/spiff", tags=["spiff"])
 
@@ -31,6 +31,16 @@ class SpiffCampaignCreate(BaseModel):
 
 class SpiffCampaignCreateRequest(BaseModel):
     campaigns: list[SpiffCampaignCreate]
+    created_by: str | None = None
+
+
+class SpiffDealCreateRequest(BaseModel):
+    sdr_id: str
+    business_name: str
+    deal_date: str
+    deal_value: float
+    commission_pct: float
+    source_quote_id: str | None = None
     created_by: str | None = None
 
 
@@ -144,3 +154,37 @@ def clear_spiff_campaigns(month: str, db: Session = Depends(get_db)):
         return []
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Clear SPIFF campaigns failed: {e}")
+
+
+@router.get("/export/{month}")
+def export_commission_excel(month: str, db: Session = Depends(get_db)):
+    if not month.strip():
+        raise HTTPException(status_code=422, detail="Month is required.")
+    try:
+        content = commission_export_service.export_commission_excel(db, month)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Commission export failed: {e}")
+    filename = f"Commission_Export_{month}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/deals")
+def create_spiff_deal(data: SpiffDealCreateRequest, db: Session = Depends(get_db)):
+    try:
+        return spiff_service.create_deal(db, data.model_dump(), data.created_by)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Create deal commission failed: {e}")
+
+
+@router.delete("/deals/{deal_id}")
+def delete_spiff_deal(deal_id: str, db: Session = Depends(get_db)):
+    deleted = spiff_service.delete_deal(db, deal_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Deal commission not found.")
+    return {"deleted": True}

@@ -223,7 +223,37 @@
 .spiff-overall-table td:nth-child(3) { width: 112px; white-space: nowrap; text-align: right; }
 .spiff-record-section .spiff-empty { margin: 12px; }
 .spiff-record-amount { color: var(--status-fulfilled-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.spiff-deal-table th:nth-child(1) { width: 56px; }
+.spiff-deal-table th:nth-child(2) { width: 110px; }
+.spiff-deal-table th:nth-child(4),
+.spiff-deal-table th:nth-child(5),
+.spiff-deal-table th:nth-child(6) { width: 110px; }
+.spiff-deal-table th:nth-child(7) { width: 90px; }
+.spiff-deal-table td:nth-child(3) { white-space: normal; text-align: left; }
 .spiff-record-amount.adjusted { color: #6D28D9; }
+.spiff-quote-picker-table th,
+.spiff-quote-picker-table td { text-align: center; }
+.spiff-quote-picker-table th:nth-child(1),
+.spiff-quote-picker-table td:nth-child(1) { width: 108px; white-space: nowrap; }
+.spiff-quote-picker-table th:nth-child(2),
+.spiff-quote-picker-table td:nth-child(2) { width: 90px; white-space: nowrap; }
+.spiff-quote-picker-table th:nth-child(3),
+.spiff-quote-picker-table td:nth-child(3) { width: auto; white-space: normal; }
+.spiff-quote-picker-table th:nth-child(4),
+.spiff-quote-picker-table td:nth-child(4) { width: 110px; white-space: nowrap; }
+.spiff-quote-picker-table th:nth-child(5),
+.spiff-quote-picker-table td:nth-child(5) { width: 90px; }
+.input-affix { position: relative; }
+.input-affix input { width: 100%; }
+.input-affix-symbol {
+  position: absolute; top: 0; bottom: 0; display: flex; align-items: center;
+  font-size: 13px; color: var(--text-secondary); pointer-events: none;
+}
+.input-affix-prefix input { padding-left: 22px; }
+.input-affix-prefix .input-affix-symbol { left: 10px; }
+.input-affix-suffix input { padding-right: 22px; }
+.input-affix-suffix .input-affix-symbol { right: 10px; }
+.spiff-deal-add-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .spiff-rule-modal { width: min(900px, 94vw); height: min(780px, 88vh); }
 .spiff-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .spiff-tabs {

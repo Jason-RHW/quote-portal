@@ -317,3 +317,23 @@ class CommissionSpiffRule(Base):
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class CommissionDeal(Base):
+    """Manually-recorded deal commissions for the SDR Commission dashboard's
+    Deal Commission tab — a flat $ commission on a closed deal, either linked
+    back to an existing Quote or entered as a standalone deal. Soft-deletable,
+    same convention as CommissionSpiffRule."""
+    __tablename__ = "commission_deals"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    sdr_id = Column(String, nullable=False, index=True)
+    business_name = Column(String, nullable=False)
+    deal_date = Column(Date, nullable=False, index=True)
+    deal_value = Column(Float, nullable=False, default=0)
+    commission_pct = Column(Float, nullable=False, default=0)
+    commission_amount = Column(Float, nullable=False, default=0)
+    source_quote_id = Column(String, nullable=True)  # optional link back to the quote this deal closed
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)

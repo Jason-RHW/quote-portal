@@ -8,6 +8,14 @@
       "cwd": "sample-request-form",
       "env": { "VITE_API_URL": "http://127.0.0.1:8000/api" },
       "port": 5174
+    },
+    {
+      "name": "admin-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5173"],
+      "cwd": "frontend",
+      "env": { "VITE_API_URL": "http://127.0.0.1:8000/api" },
+      "port": 5173
     }
   ]
 }

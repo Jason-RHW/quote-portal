@@ -28,6 +28,28 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+async function downloadFile(path, filename) {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${path} failed (${res.status}): ${text}`);
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export const api = {
   auth: {
     login: (password) =>
@@ -72,6 +94,9 @@ export const api = {
     createCampaigns: (month, data) => request(`/spiff/campaigns/${month}`, { method: "POST", body: JSON.stringify(data) }),
     deleteCampaign: (id) => request(`/spiff/campaigns/${id}`, { method: "DELETE" }),
     clearCampaigns: (month) => request(`/spiff/campaigns/month/${month}`, { method: "DELETE" }),
+    createDeal: (data) => request("/spiff/deals", { method: "POST", body: JSON.stringify(data) }),
+    deleteDeal: (id) => request(`/spiff/deals/${id}`, { method: "DELETE" }),
+    exportExcel: (month) => downloadFile(`/spiff/export/${month}`, `Commission_Export_${month}.xlsx`),
   },
   samples: {
     list:   (params = {}) => {

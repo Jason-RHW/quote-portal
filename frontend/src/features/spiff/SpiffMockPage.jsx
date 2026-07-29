@@ -24,6 +24,28 @@ function money(value) {
   return `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function daysAgo(dateStr) {
+  if (!dateStr) return "—";
+  const then = new Date(dateStr);
+  if (Number.isNaN(then.getTime())) return "—";
+  const days = Math.floor((Date.now() - then.getTime()) / 86400000);
+  return days < 0 ? "—" : `${days}d`;
+}
+
+// Comma-grouped display for a currency input while still editing/typing —
+// e.g. "10000" -> "10,000" — keeps the underlying stored value plain digits
+// (no commas) so it parses cleanly as a number on submit.
+function formatMoneyInput(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const [intPart, decPart] = String(value).split(".");
+  const groupedInt = intPart === "" ? "" : Number(intPart).toLocaleString("en-US");
+  return decPart !== undefined ? `${groupedInt}.${decPart}` : groupedInt;
+}
+
+function parseMoneyInput(value) {
+  return value.replace(/,/g, "").replace(/[^0-9.]/g, "");
+}
+
 function bonusBreakdown(details = [], total = 0) {
   if (details.length > 0) return details.map(item => money(item.amount)).join(" + ");
   return money(total);
@@ -253,6 +275,11 @@ export default function SpiffMockPage() {
   const [stagedRules, setStagedRules] = useState([]);
   const [detailRow, setDetailRow] = useState(null);
   const [detailTab, setDetailTab] = useState("samples");
+  const [showDealModal, setShowDealModal] = useState(false);
+  const [quotes, setQuotes] = useState([]);
+  const [dealSaving, setDealSaving] = useState(false);
+  const [dealError, setDealError] = useState("");
+  const [deleteDealCandidate, setDeleteDealCandidate] = useState(null);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState(null);
@@ -266,6 +293,7 @@ export default function SpiffMockPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -419,6 +447,71 @@ export default function SpiffMockPage() {
     }
   }
 
+  // Re-fetches the whole month's report (deals are folded into each SDR's
+  // payout_amount server-side) and — unlike clearAppliedRule/deleteCampaign
+  // above — keeps the detail modal open, updating just its row in place,
+  // since adding/removing one deal is a much smaller-blast-radius action
+  // than deleting a whole SPIFF rule.
+  async function refreshReportKeepingDetailOpen() {
+    const openSdrName = detailRow?.sdr_name;
+    let result;
+    if (isRuleApplied) {
+      result = await api.spiff.apply({ month, rules: campaigns.map(campaign => campaign.rule) });
+      setAppliedRuleReport(result);
+    } else {
+      result = await api.spiff.monthly(month);
+      setDashboard(result);
+    }
+    if (openSdrName) {
+      const updatedRow = (result.results || []).find(row => row.sdr_name === openSdrName);
+      setDetailRow(updatedRow || null);
+    }
+  }
+
+  async function openAddDeal() {
+    setDealError("");
+    setShowDealModal(true);
+    try {
+      const list = await api.quotes.list();
+      setQuotes(list || []);
+    } catch (e) {
+      setDealError(e.message);
+    }
+  }
+
+  async function submitDeal(dealData) {
+    const sdr = sdrOptions.find(s => s.full_name === detailRow?.sdr_name);
+    if (!sdr) {
+      setDealError("Could not find this SDR's record — try refreshing the page.");
+      return;
+    }
+    setDealSaving(true);
+    setDealError("");
+    try {
+      await api.spiff.createDeal({ ...dealData, sdr_id: sdr.id, created_by: "admin" });
+      setShowDealModal(false);
+      await refreshReportKeepingDetailOpen();
+    } catch (e) {
+      setDealError(e.message);
+    } finally {
+      setDealSaving(false);
+    }
+  }
+
+  async function deleteDeal(dealId) {
+    setLoading(true);
+    setError("");
+    try {
+      await api.spiff.deleteDeal(dealId);
+      setDeleteDealCandidate(null);
+      await refreshReportKeepingDetailOpen();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function openNewRule() {
     const bounds = monthBounds(month);
     setDates(bounds);
@@ -428,6 +521,18 @@ export default function SpiffMockPage() {
     setRuleTab("ai");
     setTraditionalLayers([newTraditionalLayer()]);
     setShowRuleModal(true);
+  }
+
+  async function handleExportExcel() {
+    setExporting(true);
+    setError("");
+    try {
+      await api.spiff.exportExcel(month);
+    } catch (e) {
+      setError(e.message || "Excel export failed.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -444,6 +549,9 @@ export default function SpiffMockPage() {
           </button>
           <button className="btn-secondary" onClick={() => setShowCampaignModal(true)}>
             Applied SPIFF Rules ({campaigns.length})
+          </button>
+          <button className="btn-secondary" onClick={handleExportExcel} disabled={exporting}>
+            {exporting ? "Exporting..." : "Export to Excel"}
           </button>
           <button className="btn-primary" onClick={openNewRule}>New SPIFF Rule</button>
         </div>
@@ -581,7 +689,7 @@ export default function SpiffMockPage() {
               <div>
                 <p className="modal-title">{detailRow.sdr_name}</p>
                 <p className="modal-subtitle">
-                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Overall SPIFF {money(detailRow.spiff_payout || 0)}
+                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Overall SPIFF {money(detailRow.spiff_payout || 0)}
                 </p>
               </div>
               <button className="modal-close" onClick={() => setDetailRow(null)}>x</button>
@@ -593,6 +701,9 @@ export default function SpiffMockPage() {
               <button className={detailTab === "quotes" ? "active" : ""} onClick={() => setDetailTab("quotes")}>
                 Quotes <span>{detailRow.eligible_quote_count || 0}</span>
               </button>
+              <button className={detailTab === "deals" ? "active" : ""} onClick={() => setDetailTab("deals")}>
+                Deal Commission <span>{money(detailRow.deal_payout || 0)}</span>
+              </button>
               <button className={detailTab === "overall" ? "active" : ""} onClick={() => setDetailTab("overall")}>
                 Overall SPIFF <span>{money(detailRow.spiff_payout || 0)}</span>
               </button>
@@ -600,7 +711,47 @@ export default function SpiffMockPage() {
             <div className="modal-body spiff-detail-body">
               {detailTab === "samples" && <RecordGroups title="Samples" rows={detailRow.samples || []} total={detailRow.sample_payout || 0} />}
               {detailTab === "quotes" && <RecordGroups title="Quotes" rows={detailRow.quotes || []} total={detailRow.quote_payout || 0} />}
+              {detailTab === "deals" && (
+                <DealCommissionSection
+                  rows={detailRow.deals || []}
+                  total={detailRow.deal_payout || 0}
+                  onAdd={openAddDeal}
+                  onDelete={row => setDeleteDealCandidate(row)}
+                />
+              )}
               {detailTab === "overall" && <OverallSpiffTable rows={detailRow.spiff_bonus_details || []} total={detailRow.spiff_payout || 0} />}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDealModal && (
+        <AddDealModal
+          sdrName={detailRow?.sdr_name}
+          quotes={quotes}
+          saving={dealSaving}
+          error={dealError}
+          onClose={() => setShowDealModal(false)}
+          onSubmit={submitDeal}
+        />
+      )}
+
+      {deleteDealCandidate && (
+        <div className="modal-overlay">
+          <div className="modal-box spiff-confirm-modal">
+            <div className="modal-header">
+              <div>
+                <p className="modal-title">Delete Deal Commission?</p>
+                <p className="modal-subtitle">{deleteDealCandidate.business_name} — {money(deleteDealCandidate.amount || 0)}</p>
+              </div>
+              <button className="modal-close" onClick={() => setDeleteDealCandidate(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <div className="spiff-empty">This removes the deal commission and recalculates this SDR's total for {month}.</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setDeleteDealCandidate(null)}>Cancel</button>
+              <button className="btn-primary" onClick={() => deleteDeal(deleteDealCandidate.id)}>Delete</button>
             </div>
           </div>
         </div>
@@ -940,6 +1091,13 @@ function ReasonCard({ data }) {
         <span> = </span>
         <span className="quote-dollar">{money(row.quote_payout || 0)}</span>
       </div>
+      {(row.deal_payout || 0) > 0 && (
+        <div>
+          <span className="quote-chip">Deal Commission</span>
+          <span> = </span>
+          <span className="quote-dollar">{money(row.deal_payout || 0)}</span>
+        </div>
+      )}
       {(row.spiff_payout || 0) > 0 && (
         <div>
           <span className="spiff-chip">Overall SPIFF</span>
@@ -1070,6 +1228,213 @@ function OverallSpiffTable({ rows, total }) {
         </div>
       )}
     </section>
+  );
+}
+
+function DealCommissionSection({ rows, total, onAdd, onDelete }) {
+  return (
+    <section className="spiff-record-section">
+      <div className="spiff-section-heading">
+        <span>Deal Commission</span>
+        <strong>{money(total)}</strong>
+      </div>
+      <div className="spiff-deal-add-row">
+        <button className="btn-primary" onClick={onAdd}>Add Deal Commission</button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="spiff-empty">No deal commission in this period.</div>
+      ) : (
+        <table className="data-table spiff-record-table spiff-deal-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Date</th>
+              <th>Business Name</th>
+              <th>Deal Value</th>
+              <th>Commission %</th>
+              <th>Commission $</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.id}>
+                <td>{index + 1}</td>
+                <td>{row.date || "No date"}</td>
+                <td>{row.business_name}</td>
+                <td>{money(row.deal_value || 0)}</td>
+                <td>{Number(row.commission_pct || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
+                <td className="spiff-record-amount">{money(row.amount || 0)}</td>
+                <td><button className="row-action-btn danger" onClick={() => onDelete(row)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function AddDealModal({ sdrName, quotes, saving, error, onClose, onSubmit }) {
+  const [mode, setMode] = useState("choose");
+  const [quoteSearch, setQuoteSearch] = useState("");
+  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
+  const [businessName, setBusinessName] = useState("");
+  const [dealDate, setDealDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dealValue, setDealValue] = useState("");
+  const [commissionPct, setCommissionPct] = useState("");
+  const [formError, setFormError] = useState("");
+
+  const sdrQuotes = useMemo(
+    () => quotes.filter(q => q.associated_sdr === sdrName),
+    [quotes, sdrName]
+  );
+  const filteredQuotes = useMemo(() => {
+    const term = quoteSearch.trim().toLowerCase();
+    if (!term) return sdrQuotes;
+    return sdrQuotes.filter(q => q.business_name.toLowerCase().includes(term));
+  }, [sdrQuotes, quoteSearch]);
+
+  const commissionAmount = (Number(dealValue) || 0) * (Number(commissionPct) || 0) / 100;
+  const showForm = mode === "new" || (mode === "choose" && selectedQuoteId);
+
+  function chooseQuote(quote) {
+    setSelectedQuoteId(quote.id);
+    setBusinessName(quote.business_name);
+    setDealValue(String(quote.quote_value || 0));
+    if (quote.date_requested) setDealDate(quote.date_requested.slice(0, 10));
+  }
+
+  function backToQuoteList() {
+    setSelectedQuoteId(null);
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setFormError("");
+    if (!businessName.trim()) { setFormError("Business name is required."); return; }
+    if (!dealDate) { setFormError("Deal date is required."); return; }
+    if (!dealValue || Number(dealValue) <= 0) { setFormError("Deal value must be greater than 0."); return; }
+    if (!commissionPct || Number(commissionPct) <= 0) { setFormError("Commission % must be greater than 0."); return; }
+    onSubmit({
+      business_name: businessName.trim(),
+      deal_date: dealDate,
+      deal_value: Number(dealValue),
+      commission_pct: Number(commissionPct),
+      source_quote_id: mode === "choose" ? selectedQuoteId : null,
+    });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box spiff-rule-modal">
+        <div className="modal-header">
+          <div>
+            <p className="modal-title">Add Deal Commission</p>
+            <p className="modal-subtitle">{sdrName}</p>
+          </div>
+          <button className="modal-close" onClick={onClose}>x</button>
+        </div>
+        <div className="modal-body">
+          {(error || formError) && <div className="error-banner">{error || formError}</div>}
+          <div className="spiff-tabs">
+            <button className={mode === "choose" ? "active" : ""} onClick={() => { setMode("choose"); setSelectedQuoteId(null); }}>
+              Choose Existing Quote
+            </button>
+            <button className={mode === "new" ? "active" : ""} onClick={() => { setMode("new"); setSelectedQuoteId(null); setBusinessName(""); setDealValue(""); }}>
+              Create New Deal
+            </button>
+          </div>
+
+          {mode === "choose" && !selectedQuoteId && (
+            <>
+              <div className="form-field">
+                <label>Search {sdrName}'s quotes</label>
+                <input value={quoteSearch} onChange={e => setQuoteSearch(e.target.value)} placeholder="Business name…" />
+              </div>
+              {filteredQuotes.length === 0 ? (
+                <div className="spiff-empty">No quotes found for {sdrName}.</div>
+              ) : (
+                <table className="data-table spiff-quote-picker-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Days Ago</th>
+                      <th>Business Name</th>
+                      <th>Value</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredQuotes.map(quote => (
+                      <tr key={quote.id}>
+                        <td>{quote.date_requested ? quote.date_requested.slice(0, 10) : "No date"}</td>
+                        <td>{daysAgo(quote.date_requested)}</td>
+                        <td>{quote.business_name}</td>
+                        <td>{money(quote.quote_value || 0)}</td>
+                        <td><button className="row-action-btn" onClick={() => chooseQuote(quote)}>Select</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {showForm && (
+            <form onSubmit={handleSubmit}>
+              {mode === "choose" && (
+                <button type="button" className="row-action-btn" onClick={backToQuoteList} style={{ marginBottom: 12 }}>
+                  ← Back to quote list
+                </button>
+              )}
+              <div className="spiff-form-grid">
+                <div className="form-field">
+                  <label>Deal Date</label>
+                  <input type="date" value={dealDate} onChange={e => setDealDate(e.target.value)} />
+                </div>
+                <div className="form-field">
+                  <label>SDR</label>
+                  <input value={sdrName || ""} disabled />
+                </div>
+                <div className="form-field">
+                  <label>Business Name</label>
+                  <input value={businessName} onChange={e => setBusinessName(e.target.value)} disabled={mode === "choose"} />
+                </div>
+                <div className="form-field">
+                  <label>Deal Value</label>
+                  <div className="input-affix input-affix-prefix">
+                    <span className="input-affix-symbol">$</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={formatMoneyInput(dealValue)}
+                      onChange={e => setDealValue(parseMoneyInput(e.target.value))}
+                      disabled={mode === "choose"}
+                    />
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label>Commission %</label>
+                  <div className="input-affix input-affix-suffix">
+                    <input type="number" min="0" step="0.01" value={commissionPct} onChange={e => setCommissionPct(e.target.value)} />
+                    <span className="input-affix-symbol">%</span>
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label>Commission $</label>
+                  <input value={money(commissionAmount)} disabled />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Add Deal Commission"}</button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

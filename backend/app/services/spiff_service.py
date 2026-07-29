@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
-from app.models.db_models import CommissionSpiffRule, Quote, SampleRequest, Sdr, SdrDailyStat, gen_id
+from app.models.db_models import CommissionDeal, CommissionSpiffRule, Quote, SampleRequest, Sdr, SdrDailyStat, gen_id
 
 
 EXCLUDED_COMMISSION_SDRS = {"Jason Rui", "Henry Park", "Angel Sun"}
@@ -79,7 +79,13 @@ RULE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "name": {"type": "string"},
+        "name": {
+            "type": "string",
+            "description": "A short descriptive label that always states the actual dollar amount paid "
+                            "to the SDR — e.g. \"$10 Per Quote for Quotes Over $200\", not \"Quotes over $200\" "
+                            "(that only names the condition, not the payout). Never include dates or a date "
+                            "range here — dates belong exclusively in start_date/end_date.",
+        },
         "rule_type": {
             "type": "string",
             "enum": ["flat_rate", "threshold_bonus", "first_to_target", "first_to_targets", "leaderboard", "daily_leader_bonus", "flat_plus_threshold"],
@@ -141,6 +147,18 @@ RULE_SCHEMA = {
 
 SPIFF_INSTRUCTIONS = """You translate manager-written SPIFF descriptions into one deterministic rule JSON.
 Do not calculate payouts. Extract only the rule.
+
+name must always state the actual dollar amount paid to the SDR — pull it from whichever field carries
+it (amount_per_sample, amount_per_quote, bonus_amount, or the relevant leaderboard_prizes/first_to_targets
+entry). "Quotes over $200" is wrong (it only names the condition); "$10 Per Quote for Quotes Over $200"
+is right. "25 Samples Weekly Bonus" is wrong; "$75 for 25 Samples Weekly Bonus" is right. If a rule pays
+different amounts at different tiers (leaderboard, first_to_targets), name it after the top/first-tier
+amount, e.g. "$50 for Most Samples This Week Bonus".
+
+name must also never embed dates, a date range, or a month name in it
+(e.g. use "Holiday Bonus", not "Holiday Bonus (Dec 1-31)" or "December Holiday Bonus"). Dates belong
+exclusively in start_date/end_date, which are separate fields and are always shown alongside the name
+wherever the campaign appears.
 
 Supported rule types:
 - flat_rate: amount_per_sample is paid for every eligible sample; amount_per_quote is paid for every eligible quote.
@@ -407,6 +425,76 @@ def _eligible_quotes(db: Session, rule: Dict[str, Any]) -> Dict[str, List[Quote]
     return by_sdr
 
 
+def _deal_payload(deal: CommissionDeal) -> Dict[str, Any]:
+    return {
+        "id": str(deal.id),
+        "business_name": deal.business_name,
+        "date": deal.deal_date.isoformat() if deal.deal_date else None,
+        "deal_value": round(float(deal.deal_value or 0), 2),
+        "commission_pct": round(float(deal.commission_pct or 0), 2),
+        "amount": round(float(deal.commission_amount or 0), 2),
+        "source_quote_id": deal.source_quote_id,
+    }
+
+
+def _eligible_deals(db: Session, start: date, end: date) -> Dict[str, List[CommissionDeal]]:
+    """Grouped by SDR full name, matching how samples/quotes are grouped
+    throughout this file (the report's "sdr_id" is actually the SDR's name,
+    not the real Sdr.id — see apply_rules_to_month/_base_commission_report)."""
+    sdr_names_by_id = {sdr.id: sdr.full_name for sdr in db.query(Sdr).all()}
+    by_sdr: Dict[str, List[CommissionDeal]] = defaultdict(list)
+    rows = (
+        db.query(CommissionDeal)
+        .filter(CommissionDeal.deleted_at.is_(None))
+        .filter(CommissionDeal.deal_date >= start, CommissionDeal.deal_date <= end)
+        .all()
+    )
+    for deal in rows:
+        sdr_name = sdr_names_by_id.get(deal.sdr_id)
+        if not sdr_name:
+            continue
+        by_sdr[sdr_name].append(deal)
+    for deal_rows in by_sdr.values():
+        deal_rows.sort(key=lambda d: (d.deal_date or date.min, d.id))
+    return by_sdr
+
+
+def create_deal(db: Session, data: Dict[str, Any], created_by: Optional[str] = None) -> Dict[str, Any]:
+    sdr = db.query(Sdr).filter(Sdr.id == data["sdr_id"]).first()
+    if not sdr:
+        raise ValueError("Unknown SDR.")
+    deal_value = float(data.get("deal_value") or 0)
+    commission_pct = float(data.get("commission_pct") or 0)
+    deal = CommissionDeal(
+        id=gen_id(),
+        sdr_id=sdr.id,
+        business_name=(data.get("business_name") or "").strip(),
+        deal_date=_parse_date(data.get("deal_date")),
+        deal_value=deal_value,
+        commission_pct=commission_pct,
+        commission_amount=round(deal_value * commission_pct / 100, 2),
+        source_quote_id=data.get("source_quote_id"),
+        created_by=created_by,
+    )
+    if not deal.business_name:
+        raise ValueError("Business name is required.")
+    if not deal.deal_date:
+        raise ValueError("Deal date is required.")
+    db.add(deal)
+    db.commit()
+    db.refresh(deal)
+    return _deal_payload(deal)
+
+
+def delete_deal(db: Session, deal_id: str) -> bool:
+    deal = db.query(CommissionDeal).filter(CommissionDeal.id == deal_id, CommissionDeal.deleted_at.is_(None)).first()
+    if not deal:
+        return False
+    deal.deleted_at = datetime.now()
+    db.commit()
+    return True
+
+
 def _active_sdrs_as_of(db: Session, as_of: Optional[date]) -> List[Sdr]:
     rows = [
         sdr for sdr in db.query(Sdr).all()
@@ -474,8 +562,10 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
     sample_rule = {**rule, "start_date": start.isoformat(), "end_date": end.isoformat()}
     sdrs_by_id, samples_by_sdr = _eligible_samples(db, sample_rule)
     quotes_by_sdr = _eligible_quotes(db, rule)
+    deals_by_sdr = _eligible_deals(db, start, end)
     names = set(quotes_by_sdr)
     names.update(sdrs_by_id[sdr_id].full_name for sdr_id in samples_by_sdr)
+    names.update(deals_by_sdr)
 
     results = []
     for name in sorted(names):
@@ -485,13 +575,16 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
                 sample_rows = rows
                 break
         quote_rows = quotes_by_sdr.get(name, [])
+        deal_rows = deals_by_sdr.get(name, [])
         sample_count = len(sample_rows)
         quote_count = len(quote_rows)
         sample_payloads = [_sample_payload(req, "created_at", 1, 1, False) for req in sample_rows]
         quote_payloads = [_quote_payload(q, 3, 3, False) for q in quote_rows]
+        deal_payloads = [_deal_payload(d) for d in deal_rows]
         sample_payout = sum(item["amount"] for item in sample_payloads)
         quote_payout = sum(item["amount"] for item in quote_payloads)
-        payout = sample_payout + quote_payout
+        deal_payout = sum(item["amount"] for item in deal_payloads)
+        payout = sample_payout + quote_payout + deal_payout
         results.append({
             "sdr_id": name,
             "sdr_name": name,
@@ -507,11 +600,13 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
             "sample_payout": round(sample_payout, 2),
             "quote_payout": round(quote_payout, 2),
             "spiff_payout": 0,
+            "deal_payout": round(deal_payout, 2),
             "payout_amount": round(payout, 2),
             "reason": f"{sample_count} sample(s) x $1.00 + {quote_count} quote(s) x $3.00.",
             "reached_at": None,
             "samples": sample_payloads,
             "quotes": quote_payloads,
+            "deals": deal_payloads,
         })
 
     results.sort(key=lambda r: (-r["payout_amount"], -r["eligible_unit_count"], r["sdr_name"]))
@@ -583,6 +678,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
     }
     sdrs_by_id, samples_by_sdr = _eligible_samples(db, month_rule)
     quotes_by_sdr = _eligible_quotes(db, month_rule)
+    deals_by_sdr = _eligible_deals(db, month_start, month_end)
     scoped_previews = [calculate_preview(db, rule) for rule in rules]
     spiff_bonus_by_name: Dict[str, float] = defaultdict(float)
     spiff_bonus_details_by_name: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -620,6 +716,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
 
     names = set(quotes_by_sdr)
     names.update(sdrs_by_id[sdr_id].full_name for sdr_id in samples_by_sdr)
+    names.update(deals_by_sdr)
     for rule in rules:
         if rule.get("rule_type") == "threshold_bonus" and (rule.get("qualification_scope") or "individual") == "team":
             names.update(sdr.full_name for sdr in _bonus_eligible_sdrs(db, rule))
@@ -631,6 +728,9 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
                 sample_rows = rows
                 break
         quote_rows = quotes_by_sdr.get(sdr_name, [])
+        deal_rows = deals_by_sdr.get(sdr_name, [])
+        deal_payloads = [_deal_payload(d) for d in deal_rows]
+        deal_payout = sum(item["amount"] for item in deal_payloads)
 
         sample_payloads = []
         for req in sample_rows:
@@ -719,7 +819,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
         spiff_quote_delta = quote_payout - base_quote_payout
         spiff_bonus = spiff_bonus_by_name.get(sdr_name, 0)
         spiff_bonus_details = spiff_bonus_details_by_name.get(sdr_name, [])
-        payout = sample_payout + quote_payout + spiff_bonus
+        payout = sample_payout + quote_payout + spiff_bonus + deal_payout
         visible_rules = [rule for rule in rules if rule]
         results.append({
             "sdr_id": sdr_name,
@@ -737,17 +837,20 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             "quote_payout": round(quote_payout, 2),
             "spiff_payout": round(spiff_bonus, 2),
             "spiff_bonus_details": spiff_bonus_details,
+            "deal_payout": round(deal_payout, 2),
             "payout_amount": round(payout, 2),
             "reason": (
                 f"Base: {sample_count} sample(s) x $1.00 + {quote_count} quote(s) x $3.00. "
                 f"SPIFF adjustment: samples {'+' if spiff_sample_delta >= 0 else '-'}${abs(spiff_sample_delta):,.2f}, "
                 f"quotes {'+' if spiff_quote_delta >= 0 else '-'}${abs(spiff_quote_delta):,.2f}"
                 + (f", bonus +${spiff_bonus:,.2f}." if spiff_bonus else ".")
+                + (f" Deal commission +${deal_payout:,.2f}." if deal_payout else "")
             ),
             "reached_at": None,
             "spiff_campaign_count": len(visible_rules),
             "samples": sample_payloads,
             "quotes": quote_payloads,
+            "deals": deal_payloads,
         })
 
     results.sort(key=lambda r: (-r["payout_amount"], -r["eligible_unit_count"], r["sdr_name"]))
