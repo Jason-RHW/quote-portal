@@ -1055,7 +1055,15 @@ def calculate_preview(db: Session, rule: Dict[str, Any]) -> Dict[str, Any]:
     elif rule_type == "leaderboard":
         prizes = {int(p["rank"]): float(p["amount"]) for p in rule.get("leaderboard_prizes", [])}
         ranked = sorted(results, key=lambda r: (-r["eligible_sample_count"], r["sdr_name"]))
+        rule_end = _parse_date(rule.get("end_date"))
+        period_over = rule_end is not None and date.today() > rule_end
         for idx, r in enumerate(ranked, start=1):
+            if not period_over:
+                r["reason"] += (
+                    f" Rank #{idx} so far; leaderboard SPIFF isn't paid until the period ends on "
+                    f"{rule_end.isoformat()}." if rule_end else f" Rank #{idx} so far; leaderboard SPIFF pending period end."
+                )
+                continue
             if idx in prizes:
                 r["payout_amount"] = round(prizes[idx], 2)
                 r["spiff_payout"] = round(prizes[idx], 2)
