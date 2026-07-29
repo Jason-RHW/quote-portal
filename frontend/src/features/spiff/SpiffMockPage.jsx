@@ -550,9 +550,6 @@ export default function SpiffMockPage() {
           <button className="btn-secondary" onClick={() => setShowCampaignModal(true)}>
             Applied SPIFF Rules ({campaigns.length})
           </button>
-          <button className="btn-secondary" onClick={handleExportExcel} disabled={exporting}>
-            {exporting ? "Exporting..." : "Export to Excel"}
-          </button>
           <button className="btn-primary" onClick={openNewRule}>New SPIFF Rule</button>
         </div>
       </div>
@@ -582,6 +579,9 @@ export default function SpiffMockPage() {
               {isRuleApplied ? "Full month with SPIFF adjustment applied" : "Default monthly commission"}
             </div>
           </div>
+          <button className="btn-secondary" onClick={handleExportExcel} disabled={exporting}>
+            {exporting ? "Exporting..." : "Export to Excel"}
+          </button>
         </div>
         <div className="spiff-table-scroll">
           {loading ? (
