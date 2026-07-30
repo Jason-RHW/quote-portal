@@ -24,6 +24,7 @@ from app.services import spiff_service
 
 SAMPLE_BASE_RATE = 1.0
 QUOTE_BASE_RATE = 3.0
+MEETING_BASE_RATE = 3.0
 
 HEADER_FILL = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
 HEADER_FONT = Font(color="FFFFFF", bold=True, size=11)
@@ -39,6 +40,7 @@ DATE_FMT = "yyyy-mm-dd"
 
 SAMPLE_RATE_REF = "Summary!$M$1"
 QUOTE_RATE_REF = "Summary!$M$2"
+MEETING_RATE_REF = "Summary!$M$3"
 COMPONENTS_SHEET = "SPIFF Components"
 
 
@@ -268,12 +270,14 @@ def _add_grouped_sheet(wb, title, ordered_results, item_key, header_labels, row_
 
 def _add_spiff_components_sheet(wb, ordered_results):
     """Hidden row-level source data backing the combined SPIFF sheet: every
-    individual sample/quote SPIFF delta and every overall bonus instance,
-    one row each. Start/End Date are real date objects (not text) so the
-    array-formula MIN/MAX lookups on the visible sheet work — Excel's
+    individual sample/quote/meeting SPIFF delta and every overall bonus
+    instance, one row each. Start/End Date are real date objects (not text)
+    so the array-formula MIN/MAX lookups on the visible sheet work — Excel's
     date-comparison functions ignore text values. Amount is a formula
-    (Final Amount - base rate) for sample/quote rows; a literal for bonus
-    rows (there's no base rate to subtract from a team/threshold bonus)."""
+    (Final Amount - base rate) for sample/quote/meeting rows; a literal for
+    bonus rows (there's no base rate to subtract from a team/threshold
+    bonus). Quote-linked meetings never appear here — they have no base
+    rate to override, so they never carry spiff_campaigns."""
     ws = wb.create_sheet(COMPONENTS_SHEET)
     headers = ["SDR Name", "Campaign", "Start Date", "End Date", "Final Amount", "Amount", "Source"]
     for col, label in enumerate(headers, start=1):
@@ -324,6 +328,27 @@ def _add_spiff_components_sheet(wb, ordered_results):
                 c6 = ws.cell(row=row, column=6, value=f"=E{row}-{QUOTE_RATE_REF}")
                 c6.number_format = MONEY_FMT
                 ws.cell(row=row, column=7, value="Quote")
+                row += 1
+
+        for record in r.get("meetings") or []:
+            for campaign in record.get("spiff_campaigns") or []:
+                name = _strip_dates_from_name(campaign.get("name") or "SPIFF")
+                start = _parse_date(campaign.get("start_date"))
+                end = _parse_date(campaign.get("end_date"))
+                final_amount = campaign.get("rate")
+                ws.cell(row=row, column=1, value=sdr)
+                ws.cell(row=row, column=2, value=name)
+                c3 = ws.cell(row=row, column=3, value=start)
+                if start:
+                    c3.number_format = DATE_FMT
+                c4 = ws.cell(row=row, column=4, value=end)
+                if end:
+                    c4.number_format = DATE_FMT
+                c5 = ws.cell(row=row, column=5, value=final_amount)
+                c5.number_format = MONEY_FMT
+                c6 = ws.cell(row=row, column=6, value=f"=E{row}-{MEETING_RATE_REF}")
+                c6.number_format = MONEY_FMT
+                ws.cell(row=row, column=7, value="Meeting")
                 row += 1
 
         for bonus in r.get("spiff_bonus_details") or []:
@@ -467,21 +492,73 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
     return subtotal_refs
 
 
+def _add_sick_days_sheet(wb, ordered_results):
+    """Record-keeping only sheet — no dollar figures, so it doesn't reuse
+    _add_grouped_sheet (whose empty-state always writes a $-formatted zero,
+    which would be wrong here)."""
+    ws = wb.create_sheet("Sick Days")
+    header_labels = ["Start Date", "End Date", "Reason Note"]
+    row = 1
+    widths = defaultdict(int)
+
+    for r in ordered_results:
+        sdr = r["sdr_name"]
+        rows = r.get("sick_days") or []
+
+        ws.cell(row=row, column=1, value=sdr).font = GROUP_FONT
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=len(header_labels))
+        _set_col_width(widths, 1, sdr)
+        row += 1
+
+        if not rows:
+            ws.cell(row=row, column=1, value="No sick days this month").font = EMPTY_FONT
+            _set_col_width(widths, 1, "No sick days this month")
+            for col in range(1, len(header_labels) + 1):
+                ws.cell(row=row, column=col).border = BORDER
+            row += 2
+            continue
+
+        for col, label in enumerate(header_labels, start=1):
+            ws.cell(row=row, column=col, value=label)
+            _set_col_width(widths, col, label)
+        _style_header_row(ws, row, len(header_labels))
+        row += 1
+
+        for item in sorted(rows, key=lambda x: x.get("start_date") or ""):
+            values = [item.get("start_date"), item.get("end_date"), item.get("reason_note")]
+            for col, val in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=col, value=val)
+                cell.border = BORDER
+                _set_col_width(widths, col, _visible_text(val))
+            row += 1
+
+        row += 1  # spacer
+
+    _apply_col_widths(ws, widths)
+    return None
+
+
 def build_commission_workbook(db: Session, month: str) -> Workbook:
     """Sheet layout:
       - Summary (protected/locked): per-SDR totals. Sample $/Quote $ =
-        count * base-rate (formula, base rates in labeled cells M1/M2);
-        SPIFF = cross-sheet reference to the combined SPIFF sheet's
-        subtotal; Total Payout = same-row SUM; TOTAL row = SUM down each
-        column.
+        count * base-rate (formula, base rates in labeled cells M1/M2/M3);
+        Meeting $/SPIFF = cross-sheet reference to the Meeting Detail /
+        combined SPIFF sheet's subtotal; Total Payout = same-row SUM;
+        TOTAL row = SUM down each column.
       - Sample Detail / Quote Detail: plain record list (Date, Business
         Name, [Quote Value for quotes], hidden Record ID) — the single
         source of truth other sheets look up by ID.
       - SPIFF: one row per (SDR, campaign), aggregated across samples,
-        quotes, and overall bonuses — Campaign, Start Date, End Date,
-        SPIFF $ — all formulas against the hidden SPIFF Components sheet.
+        quotes, meetings, and overall bonuses — Campaign, Start Date, End
+        Date, SPIFF $ — all formulas against the hidden SPIFF Components
+        sheet.
       - Deal Commission Detail: Commission $ = Deal Value * Commission % /
         100 (formula); each SDR's subtotal = SUM() over their own rows.
+      - Meeting Detail: Date / Business Name / Source (Quote-Linked or
+        Manual) / Amount — Amount is already the final, rule-aware number
+        from the report, same as Sample/Quote Detail's plain amounts.
+      - Sick Days: Start Date / End Date / Reason Note, no dollar figure —
+        record-keeping only, not part of any payout math.
     """
     campaigns = spiff_service.list_campaigns(db, month)
     rules = [c["rule"] for c in campaigns]
@@ -510,15 +587,24 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
         formula_col=5, formula_fn=lambda row: f"=C{row}*D{row}/100",
     )
 
+    meeting_subtotals = _add_grouped_sheet(
+        wb, "Meeting Detail", results, "meetings",
+        ["Date", "Business Name", "Source", "Amount"],
+        lambda m: [m.get("date"), m.get("business_name"), "Quote-Linked" if m.get("source_quote_id") else "Manual", m.get("amount")],
+        money_cols={4}, subtotal_col=4,
+    )
+
+    _add_sick_days_sheet(wb, results)
+
     # ── Summary ──
     ws = wb.create_sheet("Summary")
     ws.append(["SDR Commission Summary — " + month])
     ws["A1"].font = Font(bold=True, size=14)
     ws.append([])
-    headers = ["SDR Name", "Samples", "Sample $", "Quotes", "Quote $", "SPIFF", "Deal Commission $", "Total Payout"]
+    headers = ["SDR Name", "Samples", "Sample $", "Quotes", "Quote $", "Meeting $", "SPIFF", "Deal Commission $", "Total Payout"]
     ws.append(headers)
     _style_header_row(ws, 3, len(headers))
-    money_col_idxs = {3, 5, 6, 7, 8}
+    money_col_idxs = {3, 5, 6, 7, 8, 9}
     widths = defaultdict(int)
     for col, label in enumerate(headers, start=1):
         _set_col_width(widths, col, label)
@@ -529,7 +615,10 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
     ws.cell(row=2, column=12, value="Base rate per quote")
     rate_cell_2 = ws.cell(row=2, column=13, value=QUOTE_BASE_RATE)
     rate_cell_2.number_format = MONEY_FMT
-    _set_col_width(widths, 12, "Base rate per sample")
+    ws.cell(row=3, column=12, value="Base rate per meeting")
+    rate_cell_3 = ws.cell(row=3, column=13, value=MEETING_BASE_RATE)
+    rate_cell_3.number_format = MONEY_FMT
+    _set_col_width(widths, 12, "Base rate per meeting")
     _set_col_width(widths, 13, _visible_text(QUOTE_BASE_RATE, MONEY_FMT))
 
     first_data_row = 4
@@ -545,9 +634,10 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
 
         ws.cell(row=row_idx, column=3, value=f"=B{row_idx}*$M$1")
         ws.cell(row=row_idx, column=5, value=f"=D{row_idx}*$M$2")
-        ws.cell(row=row_idx, column=6, value=f"={spiff_subtotals[sdr]}")
-        ws.cell(row=row_idx, column=7, value=f"={deal_subtotals[sdr]}")
-        ws.cell(row=row_idx, column=8, value=f"=C{row_idx}+E{row_idx}+F{row_idx}+G{row_idx}")
+        ws.cell(row=row_idx, column=6, value=f"={meeting_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=7, value=f"={spiff_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=8, value=f"={deal_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=9, value=f"=C{row_idx}+E{row_idx}+F{row_idx}+G{row_idx}+H{row_idx}")
 
         for col in range(1, len(headers) + 1):
             cell = ws.cell(row=row_idx, column=col)
@@ -557,12 +647,14 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
 
         spiff_total = (r["sample_payout"] - r["eligible_sample_count"] * SAMPLE_BASE_RATE) \
             + (r["quote_payout"] - r["eligible_quote_count"] * QUOTE_BASE_RATE) + r["spiff_payout"]
+        meeting_total = r.get("meeting_payout", 0)
         display_row = [
             sdr, r["eligible_sample_count"], r["eligible_sample_count"] * SAMPLE_BASE_RATE,
-            r["eligible_quote_count"], r["eligible_quote_count"] * QUOTE_BASE_RATE, spiff_total,
+            r["eligible_quote_count"], r["eligible_quote_count"] * QUOTE_BASE_RATE,
+            meeting_total, spiff_total,
             r.get("deal_payout", 0),
             r["eligible_sample_count"] * SAMPLE_BASE_RATE + r["eligible_quote_count"] * QUOTE_BASE_RATE
-            + spiff_total + r.get("deal_payout", 0),
+            + meeting_total + spiff_total + r.get("deal_payout", 0),
         ]
         for col, val in enumerate(display_row, start=1):
             fmt = MONEY_FMT if col in money_col_idxs else None

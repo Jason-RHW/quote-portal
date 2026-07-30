@@ -96,6 +96,10 @@ export const api = {
     clearCampaigns: (month) => request(`/spiff/campaigns/month/${month}`, { method: "DELETE" }),
     createDeal: (data) => request("/spiff/deals", { method: "POST", body: JSON.stringify(data) }),
     deleteDeal: (id) => request(`/spiff/deals/${id}`, { method: "DELETE" }),
+    createMeeting: (data) => request("/spiff/meetings", { method: "POST", body: JSON.stringify(data) }),
+    deleteMeeting: (id) => request(`/spiff/meetings/${id}`, { method: "DELETE" }),
+    createSickDay: (data) => request("/spiff/sick-days", { method: "POST", body: JSON.stringify(data) }),
+    deleteSickDay: (id) => request(`/spiff/sick-days/${id}`, { method: "DELETE" }),
     exportExcel: (month) => downloadFile(`/spiff/export/${month}`, `Commission_Export_${month}.xlsx`),
   },
   samples: {

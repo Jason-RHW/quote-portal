@@ -44,6 +44,22 @@ class SpiffDealCreateRequest(BaseModel):
     created_by: str | None = None
 
 
+class SpiffMeetingCreateRequest(BaseModel):
+    sdr_id: str
+    business_name: str
+    meeting_date: str
+    source_quote_id: str | None = None
+    created_by: str | None = None
+
+
+class SpiffSickDayCreateRequest(BaseModel):
+    sdr_id: str
+    start_date: str
+    end_date: str
+    reason_note: str | None = None
+    created_by: str | None = None
+
+
 @router.get("/mock/monthly/{month}")
 def monthly_spiff_dashboard(month: str, db: Session = Depends(get_db)):
     try:
@@ -187,4 +203,40 @@ def delete_spiff_deal(deal_id: str, db: Session = Depends(get_db)):
     deleted = spiff_service.delete_deal(db, deal_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Deal commission not found.")
+    return {"deleted": True}
+
+
+@router.post("/meetings")
+def create_spiff_meeting(data: SpiffMeetingCreateRequest, db: Session = Depends(get_db)):
+    try:
+        return spiff_service.create_meeting(db, data.model_dump(), data.created_by)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Create meeting failed: {e}")
+
+
+@router.delete("/meetings/{meeting_id}")
+def delete_spiff_meeting(meeting_id: str, db: Session = Depends(get_db)):
+    deleted = spiff_service.delete_meeting(db, meeting_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Meeting not found.")
+    return {"deleted": True}
+
+
+@router.post("/sick-days")
+def create_spiff_sick_day(data: SpiffSickDayCreateRequest, db: Session = Depends(get_db)):
+    try:
+        return spiff_service.create_sick_day(db, data.model_dump(), data.created_by)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Create sick day failed: {e}")
+
+
+@router.delete("/sick-days/{sick_day_id}")
+def delete_spiff_sick_day(sick_day_id: str, db: Session = Depends(get_db)):
+    deleted = spiff_service.delete_sick_day(db, sick_day_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Sick day not found.")
     return {"deleted": True}

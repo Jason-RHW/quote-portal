@@ -281,6 +281,16 @@ export default function SpiffMockPage() {
   const [dealError, setDealError] = useState("");
   const [dealSuccess, setDealSuccess] = useState("");
   const [deleteDealCandidate, setDeleteDealCandidate] = useState(null);
+  const [showMeetingModal, setShowMeetingModal] = useState(false);
+  const [meetingSaving, setMeetingSaving] = useState(false);
+  const [meetingError, setMeetingError] = useState("");
+  const [meetingSuccess, setMeetingSuccess] = useState("");
+  const [deleteMeetingCandidate, setDeleteMeetingCandidate] = useState(null);
+  const [showSickDayModal, setShowSickDayModal] = useState(false);
+  const [sickDaySaving, setSickDaySaving] = useState(false);
+  const [sickDayError, setSickDayError] = useState("");
+  const [sickDaySuccess, setSickDaySuccess] = useState("");
+  const [deleteSickDayCandidate, setDeleteSickDayCandidate] = useState(null);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState(null);
@@ -521,6 +531,104 @@ export default function SpiffMockPage() {
     }
   }
 
+  async function openAddMeeting() {
+    setMeetingError("");
+    setMeetingSuccess("");
+    setShowMeetingModal(true);
+    try {
+      const list = await api.quotes.list();
+      setQuotes(list || []);
+    } catch (e) {
+      setMeetingError(e.message);
+    }
+  }
+
+  async function submitMeeting(meetingData) {
+    const sdr = sdrOptions.find(s => s.full_name === detailRow?.sdr_name);
+    if (!sdr) {
+      setMeetingError("Could not find this SDR's record — try refreshing the page.");
+      return;
+    }
+    setMeetingSaving(true);
+    setMeetingError("");
+    setMeetingSuccess("");
+    try {
+      await api.spiff.createMeeting({ ...meetingData, sdr_id: sdr.id, created_by: "admin" });
+      await refreshReportKeepingDetailOpen();
+      setMeetingSuccess(`Saved — ${meetingData.business_name} added to ${detailRow?.sdr_name}'s meetings.`);
+    } catch (e) {
+      setMeetingError(e.message);
+    } finally {
+      setMeetingSaving(false);
+    }
+  }
+
+  function closeMeetingModal() {
+    setShowMeetingModal(false);
+    setMeetingError("");
+    setMeetingSuccess("");
+  }
+
+  async function deleteMeeting(meetingId) {
+    setLoading(true);
+    setError("");
+    try {
+      await api.spiff.deleteMeeting(meetingId);
+      setDeleteMeetingCandidate(null);
+      await refreshReportKeepingDetailOpen();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openAddSickDay() {
+    setSickDayError("");
+    setSickDaySuccess("");
+    setShowSickDayModal(true);
+  }
+
+  async function submitSickDay(sickDayData) {
+    const sdr = sdrOptions.find(s => s.full_name === detailRow?.sdr_name);
+    if (!sdr) {
+      setSickDayError("Could not find this SDR's record — try refreshing the page.");
+      return;
+    }
+    setSickDaySaving(true);
+    setSickDayError("");
+    setSickDaySuccess("");
+    try {
+      await api.spiff.createSickDay({ ...sickDayData, sdr_id: sdr.id, created_by: "admin" });
+      await refreshReportKeepingDetailOpen();
+      setSickDaySuccess(`Saved — sick day added for ${detailRow?.sdr_name}.`);
+    } catch (e) {
+      setSickDayError(e.message);
+    } finally {
+      setSickDaySaving(false);
+    }
+  }
+
+  function closeSickDayModal() {
+    setShowSickDayModal(false);
+    setSickDayError("");
+    setSickDaySuccess("");
+  }
+
+  async function deleteSickDay(sickDayId) {
+    setLoading(true);
+    setError("");
+    try {
+      await api.spiff.deleteSickDay(sickDayId);
+      setDeleteSickDayCandidate(null);
+      await refreshReportKeepingDetailOpen();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function openNewRule() {
     const bounds = monthBounds(month);
     setDates(bounds);
@@ -698,7 +806,7 @@ export default function SpiffMockPage() {
               <div>
                 <p className="modal-title">{detailRow.sdr_name}</p>
                 <p className="modal-subtitle">
-                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Overall SPIFF {money(detailRow.spiff_payout || 0)}
+                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Meetings {money(detailRow.meeting_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Overall SPIFF {money(detailRow.spiff_payout || 0)}
                 </p>
               </div>
               <button className="modal-close" onClick={() => setDetailRow(null)}>x</button>
@@ -710,8 +818,14 @@ export default function SpiffMockPage() {
               <button className={detailTab === "quotes" ? "active" : ""} onClick={() => setDetailTab("quotes")}>
                 Quotes <span>{detailRow.eligible_quote_count || 0}</span>
               </button>
+              <button className={detailTab === "meetings" ? "active" : ""} onClick={() => setDetailTab("meetings")}>
+                Meetings <span>{money(detailRow.meeting_payout || 0)}</span>
+              </button>
               <button className={detailTab === "deals" ? "active" : ""} onClick={() => setDetailTab("deals")}>
                 Deal Commission <span>{money(detailRow.deal_payout || 0)}</span>
+              </button>
+              <button className={detailTab === "sickdays" ? "active" : ""} onClick={() => setDetailTab("sickdays")}>
+                Sick Days <span>{(detailRow.sick_days || []).length}</span>
               </button>
               <button className={detailTab === "overall" ? "active" : ""} onClick={() => setDetailTab("overall")}>
                 Overall SPIFF <span>{money(detailRow.spiff_payout || 0)}</span>
@@ -720,12 +834,27 @@ export default function SpiffMockPage() {
             <div className="modal-body spiff-detail-body">
               {detailTab === "samples" && <RecordGroups title="Samples" rows={detailRow.samples || []} total={detailRow.sample_payout || 0} />}
               {detailTab === "quotes" && <RecordGroups title="Quotes" rows={detailRow.quotes || []} total={detailRow.quote_payout || 0} />}
+              {detailTab === "meetings" && (
+                <MeetingSection
+                  rows={detailRow.meetings || []}
+                  total={detailRow.meeting_payout || 0}
+                  onAdd={openAddMeeting}
+                  onDelete={row => setDeleteMeetingCandidate(row)}
+                />
+              )}
               {detailTab === "deals" && (
                 <DealCommissionSection
                   rows={detailRow.deals || []}
                   total={detailRow.deal_payout || 0}
                   onAdd={openAddDeal}
                   onDelete={row => setDeleteDealCandidate(row)}
+                />
+              )}
+              {detailTab === "sickdays" && (
+                <SickDaySection
+                  rows={detailRow.sick_days || []}
+                  onAdd={openAddSickDay}
+                  onDelete={row => setDeleteSickDayCandidate(row)}
                 />
               )}
               {detailTab === "overall" && <OverallSpiffTable rows={detailRow.spiff_bonus_details || []} total={detailRow.spiff_payout || 0} />}
@@ -763,6 +892,77 @@ export default function SpiffMockPage() {
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setDeleteDealCandidate(null)}>Cancel</button>
               <button className="btn-primary" onClick={() => deleteDeal(deleteDealCandidate.id)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMeetingModal && (
+        <AddMeetingModal
+          sdrName={detailRow?.sdr_name}
+          quotes={quotes}
+          saving={meetingSaving}
+          error={meetingError}
+          success={meetingSuccess}
+          onClose={closeMeetingModal}
+          onSubmit={submitMeeting}
+          onDismissSuccess={() => setMeetingSuccess("")}
+        />
+      )}
+
+      {deleteMeetingCandidate && (
+        <div className="modal-overlay">
+          <div className="modal-box spiff-confirm-modal">
+            <div className="modal-header">
+              <div>
+                <p className="modal-title">Delete Meeting?</p>
+                <p className="modal-subtitle">{deleteMeetingCandidate.business_name} — {money(deleteMeetingCandidate.amount || 0)}</p>
+              </div>
+              <button className="modal-close" onClick={() => setDeleteMeetingCandidate(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <div className="spiff-empty">This removes the meeting and recalculates this SDR's total for {month}.</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setDeleteMeetingCandidate(null)}>Cancel</button>
+              <button className="btn-primary" onClick={() => deleteMeeting(deleteMeetingCandidate.id)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSickDayModal && (
+        <AddSickDayModal
+          sdrName={detailRow?.sdr_name}
+          saving={sickDaySaving}
+          error={sickDayError}
+          success={sickDaySuccess}
+          onClose={closeSickDayModal}
+          onSubmit={submitSickDay}
+          onDismissSuccess={() => setSickDaySuccess("")}
+        />
+      )}
+
+      {deleteSickDayCandidate && (
+        <div className="modal-overlay">
+          <div className="modal-box spiff-confirm-modal">
+            <div className="modal-header">
+              <div>
+                <p className="modal-title">Delete Sick Day?</p>
+                <p className="modal-subtitle">
+                  {deleteSickDayCandidate.start_date === deleteSickDayCandidate.end_date
+                    ? deleteSickDayCandidate.start_date
+                    : `${deleteSickDayCandidate.start_date} – ${deleteSickDayCandidate.end_date}`}
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setDeleteSickDayCandidate(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <div className="spiff-empty">This removes the sick day record for {month}.</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setDeleteSickDayCandidate(null)}>Cancel</button>
+              <button className="btn-primary" onClick={() => deleteSickDay(deleteSickDayCandidate.id)}>Delete</button>
             </div>
           </div>
         </div>
@@ -1466,6 +1666,411 @@ function AddDealModal({ sdrName, quotes, saving, error, success, onClose, onSubm
             </form>
           )}
           </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MeetingSection({ rows, total, onAdd, onDelete }) {
+  return (
+    <section className="spiff-record-section">
+      <div className="spiff-section-heading">
+        <span>Meetings</span>
+        <strong>{money(total)}</strong>
+      </div>
+      <div className="spiff-deal-add-row">
+        <button className="btn-primary" onClick={onAdd}>Add Meeting</button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="spiff-empty">No meetings in this period.</div>
+      ) : (
+        <table className="data-table spiff-record-table spiff-meeting-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Date</th>
+              <th>Business Name</th>
+              <th>Source</th>
+              <th>Amount</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.id}>
+                <td>{index + 1}</td>
+                <td>{row.date || "No date"}</td>
+                <td>{row.business_name}</td>
+                <td>{row.source_quote_id ? "Quote-Linked" : "Manual"}</td>
+                <td className="spiff-record-amount">{money(row.amount || 0)}</td>
+                <td><button className="row-action-btn danger" onClick={() => onDelete(row)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function AddMeetingModal({ sdrName, quotes, saving, error, success, onClose, onSubmit, onDismissSuccess }) {
+  const [mode, setMode] = useState("choose");
+  const [quoteSearch, setQuoteSearch] = useState("");
+  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
+  const [businessName, setBusinessName] = useState("");
+  const [meetingDate, setMeetingDate] = useState(new Date().toISOString().slice(0, 10));
+  const [formError, setFormError] = useState("");
+
+  function resetForAnother() {
+    setMode("choose");
+    setQuoteSearch("");
+    setSelectedQuoteId(null);
+    setBusinessName("");
+    setMeetingDate(new Date().toISOString().slice(0, 10));
+    setFormError("");
+    onDismissSuccess();
+  }
+
+  const sdrQuotes = useMemo(
+    () => quotes.filter(q => q.associated_sdr === sdrName),
+    [quotes, sdrName]
+  );
+  const filteredQuotes = useMemo(() => {
+    const term = quoteSearch.trim().toLowerCase();
+    if (!term) return sdrQuotes;
+    return sdrQuotes.filter(q => q.business_name.toLowerCase().includes(term));
+  }, [sdrQuotes, quoteSearch]);
+
+  const showForm = mode === "new" || (mode === "choose" && selectedQuoteId);
+
+  function chooseQuote(quote) {
+    setSelectedQuoteId(quote.id);
+    setBusinessName(quote.business_name);
+    if (quote.date_requested) setMeetingDate(quote.date_requested.slice(0, 10));
+  }
+
+  function backToQuoteList() {
+    setSelectedQuoteId(null);
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setFormError("");
+    if (!businessName.trim()) { setFormError("Business name is required."); return; }
+    if (!meetingDate) { setFormError("Meeting date is required."); return; }
+    onSubmit({
+      business_name: businessName.trim(),
+      meeting_date: meetingDate,
+      source_quote_id: mode === "choose" ? selectedQuoteId : null,
+    });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box spiff-rule-modal">
+        <div className="modal-header">
+          <div>
+            <p className="modal-title">Add Meeting</p>
+            <p className="modal-subtitle">{sdrName}</p>
+          </div>
+          <button className="modal-close" onClick={onClose}>x</button>
+        </div>
+        <div className="modal-body">
+          {success ? (
+            <>
+              <div className="success-banner">{success}</div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={resetForAnother}>Add another</button>
+                <button type="button" className="btn-primary" onClick={onClose}>Done</button>
+              </div>
+            </>
+          ) : (
+          <>
+          {(error || formError) && <div className="error-banner">{error || formError}</div>}
+          <div className="spiff-tabs">
+            <button className={mode === "choose" ? "active" : ""} onClick={() => { setMode("choose"); setSelectedQuoteId(null); }}>
+              Choose Existing Quote
+            </button>
+            <button className={mode === "new" ? "active" : ""} onClick={() => { setMode("new"); setSelectedQuoteId(null); setBusinessName(""); }}>
+              Create New Meeting
+            </button>
+          </div>
+
+          {mode === "choose" && !selectedQuoteId && (
+            <>
+              <div className="form-field">
+                <label>Search {sdrName}'s quotes</label>
+                <input value={quoteSearch} onChange={e => setQuoteSearch(e.target.value)} placeholder="Business name…" />
+              </div>
+              {filteredQuotes.length === 0 ? (
+                <div className="spiff-empty">No quotes found for {sdrName}.</div>
+              ) : (
+                <table className="data-table spiff-quote-picker-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Days Ago</th>
+                      <th>Business Name</th>
+                      <th>Value</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredQuotes.map(quote => (
+                      <tr key={quote.id}>
+                        <td>{quote.date_requested ? quote.date_requested.slice(0, 10) : "No date"}</td>
+                        <td>{daysAgo(quote.date_requested)}</td>
+                        <td>{quote.business_name}</td>
+                        <td>{money(quote.quote_value || 0)}</td>
+                        <td><button className="row-action-btn" onClick={() => chooseQuote(quote)}>Select</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {showForm && (
+            <form onSubmit={handleSubmit}>
+              {mode === "choose" && (
+                <button type="button" className="row-action-btn" onClick={backToQuoteList} style={{ marginBottom: 12 }}>
+                  ← Back to quote list
+                </button>
+              )}
+              <div className="spiff-form-grid">
+                <div className="form-field">
+                  <label>Meeting Date</label>
+                  <input type="date" value={meetingDate} onChange={e => setMeetingDate(e.target.value)} />
+                </div>
+                <div className="form-field">
+                  <label>SDR</label>
+                  <input value={sdrName || ""} disabled />
+                </div>
+                <div className="form-field">
+                  <label>Business Name</label>
+                  <input value={businessName} onChange={e => setBusinessName(e.target.value)} disabled={mode === "choose"} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Add Meeting"}</button>
+              </div>
+            </form>
+          )}
+          </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SickDaySection({ rows, onAdd, onDelete }) {
+  return (
+    <section className="spiff-record-section">
+      <div className="spiff-section-heading">
+        <span>Sick Days</span>
+        <strong>{rows.length}</strong>
+      </div>
+      <div className="spiff-deal-add-row">
+        <button className="btn-primary" onClick={onAdd}>Add Sick Day</button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="spiff-empty">No sick days in this period.</div>
+      ) : (
+        <table className="data-table spiff-record-table spiff-sickday-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Start Date</th>
+              <th>End Date</th>
+              <th>Reason</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.id}>
+                <td>{index + 1}</td>
+                <td>{row.start_date || "No date"}</td>
+                <td>{row.end_date || "No date"}</td>
+                <td>{row.reason_note || "—"}</td>
+                <td><button className="row-action-btn danger" onClick={() => onDelete(row)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function isoDate(year, month, day) {
+  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+}
+
+// Single-day-or-range calendar for picking sick day(s). Class-based grid
+// (cal-header/cal-grid/cal-day, mirroring PeriodPicker's CalendarPanel) for
+// easy theming, combined with DateFilterCalendar's mode-toggle + two-click
+// range-draft interaction — minus its "only dates with data" gating, since
+// any day should be pickable for a sick day.
+function SickDayCalendar({ range, onRangeChange }) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [mode, setMode] = useState(range.start && range.start !== range.end ? "range" : "single");
+  const [draftStart, setDraftStart] = useState(null);
+
+  const monthLabelText = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const startWeekday = new Date(viewYear, viewMonth, 1).getDay();
+  const totalDays = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+
+  function goMonth(delta) {
+    let m = viewMonth + delta;
+    let y = viewYear;
+    if (m < 0) { m = 11; y -= 1; }
+    if (m > 11) { m = 0; y += 1; }
+    setViewMonth(m);
+    setViewYear(y);
+  }
+
+  function handleDayClick(day) {
+    const iso = isoDate(viewYear, viewMonth, day);
+    if (mode === "single") {
+      onRangeChange({ start: iso, end: iso });
+      setDraftStart(null);
+      return;
+    }
+    if (!draftStart) {
+      setDraftStart(iso);
+      onRangeChange({ start: iso, end: "" });
+      return;
+    }
+    const [from, to] = iso < draftStart ? [iso, draftStart] : [draftStart, iso];
+    onRangeChange({ start: from, end: to });
+    setDraftStart(null);
+  }
+
+  function isInRange(iso) {
+    if (!range.start) return false;
+    const end = range.end || draftStart || range.start;
+    const [from, to] = end < range.start ? [end, range.start] : [range.start, end];
+    return iso >= from && iso <= to;
+  }
+
+  return (
+    <div className="spiff-sickday-calendar">
+      <div className="spiff-sickday-mode-toggle">
+        <button
+          type="button"
+          className={mode === "single" ? "active" : ""}
+          onClick={() => { setMode("single"); setDraftStart(null); }}
+        >
+          Single Day
+        </button>
+        <button
+          type="button"
+          className={mode === "range" ? "active" : ""}
+          onClick={() => { setMode("range"); setDraftStart(null); }}
+        >
+          Date Range
+        </button>
+      </div>
+      <div className="cal-header">
+        <button type="button" className="cal-nav-btn" onClick={() => goMonth(-1)}>‹</button>
+        <span className="cal-header-label">{monthLabelText}</span>
+        <button type="button" className="cal-nav-btn" onClick={() => goMonth(1)}>›</button>
+      </div>
+      <div className="cal-grid">
+        {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => <div className="cal-weekday" key={`${w}${i}`}>{w}</div>)}
+        {cells.map((day, i) => {
+          if (day === null) return <div className="cal-day blank" key={`b${i}`} />;
+          const iso = isoDate(viewYear, viewMonth, day);
+          const inRange = isInRange(iso);
+          const isEndpoint = iso === range.start || iso === range.end;
+          const cls = `cal-day${inRange ? " in-range" : ""}${isEndpoint ? " active" : ""}`;
+          return (
+            <div key={iso} className={cls} onClick={() => handleDayClick(day)}>
+              {day}
+            </div>
+          );
+        })}
+      </div>
+      <div className="spiff-sickday-range-label">
+        {range.start
+          ? (range.end && range.end !== range.start ? `${range.start} – ${range.end}` : range.start)
+          : "No date selected"}
+      </div>
+    </div>
+  );
+}
+
+function AddSickDayModal({ sdrName, saving, error, success, onClose, onSubmit, onDismissSuccess }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [range, setRange] = useState({ start: today, end: today });
+  const [reasonNote, setReasonNote] = useState("");
+  const [formError, setFormError] = useState("");
+
+  function resetForAnother() {
+    setRange({ start: today, end: today });
+    setReasonNote("");
+    setFormError("");
+    onDismissSuccess();
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setFormError("");
+    if (!range.start) { setFormError("Please select a date."); return; }
+    onSubmit({
+      start_date: range.start,
+      end_date: range.end || range.start,
+      reason_note: reasonNote.trim(),
+    });
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box spiff-rule-modal">
+        <div className="modal-header">
+          <div>
+            <p className="modal-title">Add Sick Day</p>
+            <p className="modal-subtitle">{sdrName}</p>
+          </div>
+          <button className="modal-close" onClick={onClose}>x</button>
+        </div>
+        <div className="modal-body">
+          {success ? (
+            <>
+              <div className="success-banner">{success}</div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={resetForAnother}>Add another</button>
+                <button type="button" className="btn-primary" onClick={onClose}>Done</button>
+              </div>
+            </>
+          ) : (
+          <form onSubmit={handleSubmit}>
+            {(error || formError) && <div className="error-banner">{error || formError}</div>}
+            <SickDayCalendar range={range} onRangeChange={setRange} />
+            <div className="form-field">
+              <label>Reason Note</label>
+              <textarea value={reasonNote} onChange={e => setReasonNote(e.target.value)} rows={3} placeholder="Optional note…" />
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Add Sick Day"}</button>
+            </div>
+          </form>
           )}
         </div>
       </div>

@@ -337,3 +337,39 @@ class CommissionDeal(Base):
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class CommissionMeeting(Base):
+    """Manually-recorded SDR/manager customer meetings for the SDR Commission
+    dashboard's Meetings tab. Worth $3 like a quote, unless linked back to an
+    existing Quote (source_quote_id set) — in that case it's $0, since the
+    quote's own $3 already covers it. No stored dollar amount: the real,
+    rule-aware amount is always computed at report time, same as
+    samples/quotes. Soft-deletable, same convention as CommissionDeal."""
+    __tablename__ = "commission_meetings"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    sdr_id = Column(String, nullable=False, index=True)
+    business_name = Column(String, nullable=False)
+    meeting_date = Column(Date, nullable=False, index=True)
+    source_quote_id = Column(String, nullable=True)  # set => $0 (quote already covers it); null => $3
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class CommissionSickDay(Base):
+    """Manager-recorded SDR sick day(s) — a single date or a range, with an
+    optional reason note. No dollar impact on commission; shown in the View
+    List and the Excel export for record-keeping only. Soft-deletable, same
+    convention as CommissionDeal."""
+    __tablename__ = "commission_sick_days"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    sdr_id = Column(String, nullable=False, index=True)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)  # == start_date for a single day
+    reason_note = Column(String, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
