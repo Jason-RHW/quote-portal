@@ -441,7 +441,11 @@ def _eligible_deals(db: Session, start: date, end: date) -> Dict[str, List[Commi
     """Grouped by SDR full name, matching how samples/quotes are grouped
     throughout this file (the report's "sdr_id" is actually the SDR's name,
     not the real Sdr.id — see apply_rules_to_month/_base_commission_report)."""
-    sdr_names_by_id = {sdr.id: sdr.full_name for sdr in db.query(Sdr).all()}
+    # str(...) on both sides: production's sdrs.id is a native Postgres uuid
+    # column (psycopg returns a uuid.UUID), while commission_deals.sdr_id is a
+    # plain string column — comparing/hashing them directly never matches, so
+    # every deal was silently dropped from every report despite saving fine.
+    sdr_names_by_id = {str(sdr.id): sdr.full_name for sdr in db.query(Sdr).all()}
     by_sdr: Dict[str, List[CommissionDeal]] = defaultdict(list)
     rows = (
         db.query(CommissionDeal)
@@ -450,7 +454,7 @@ def _eligible_deals(db: Session, start: date, end: date) -> Dict[str, List[Commi
         .all()
     )
     for deal in rows:
-        sdr_name = sdr_names_by_id.get(deal.sdr_id)
+        sdr_name = sdr_names_by_id.get(str(deal.sdr_id))
         if not sdr_name:
             continue
         by_sdr[sdr_name].append(deal)

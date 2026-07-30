@@ -279,6 +279,7 @@ export default function SpiffMockPage() {
   const [quotes, setQuotes] = useState([]);
   const [dealSaving, setDealSaving] = useState(false);
   const [dealError, setDealError] = useState("");
+  const [dealSuccess, setDealSuccess] = useState("");
   const [deleteDealCandidate, setDeleteDealCandidate] = useState(null);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
@@ -329,7 +330,7 @@ export default function SpiffMockPage() {
   }, [month, refreshTick]);
 
   useEffect(() => {
-    api.sdrs.list(false)
+    api.sdrs.list(true)
       .then(rows => setSdrOptions(rows || []))
       .catch(() => setSdrOptions([]));
   }, []);
@@ -470,6 +471,7 @@ export default function SpiffMockPage() {
 
   async function openAddDeal() {
     setDealError("");
+    setDealSuccess("");
     setShowDealModal(true);
     try {
       const list = await api.quotes.list();
@@ -487,15 +489,22 @@ export default function SpiffMockPage() {
     }
     setDealSaving(true);
     setDealError("");
+    setDealSuccess("");
     try {
       await api.spiff.createDeal({ ...dealData, sdr_id: sdr.id, created_by: "admin" });
-      setShowDealModal(false);
       await refreshReportKeepingDetailOpen();
+      setDealSuccess(`Saved — ${dealData.business_name} added to ${detailRow?.sdr_name}'s deal commission.`);
     } catch (e) {
       setDealError(e.message);
     } finally {
       setDealSaving(false);
     }
+  }
+
+  function closeDealModal() {
+    setShowDealModal(false);
+    setDealError("");
+    setDealSuccess("");
   }
 
   async function deleteDeal(dealId) {
@@ -731,8 +740,10 @@ export default function SpiffMockPage() {
           quotes={quotes}
           saving={dealSaving}
           error={dealError}
-          onClose={() => setShowDealModal(false)}
+          success={dealSuccess}
+          onClose={closeDealModal}
           onSubmit={submitDeal}
+          onDismissSuccess={() => setDealSuccess("")}
         />
       )}
 
@@ -1275,7 +1286,7 @@ function DealCommissionSection({ rows, total, onAdd, onDelete }) {
   );
 }
 
-function AddDealModal({ sdrName, quotes, saving, error, onClose, onSubmit }) {
+function AddDealModal({ sdrName, quotes, saving, error, success, onClose, onSubmit, onDismissSuccess }) {
   const [mode, setMode] = useState("choose");
   const [quoteSearch, setQuoteSearch] = useState("");
   const [selectedQuoteId, setSelectedQuoteId] = useState(null);
@@ -1284,6 +1295,18 @@ function AddDealModal({ sdrName, quotes, saving, error, onClose, onSubmit }) {
   const [dealValue, setDealValue] = useState("");
   const [commissionPct, setCommissionPct] = useState("");
   const [formError, setFormError] = useState("");
+
+  function resetForAnother() {
+    setMode("choose");
+    setQuoteSearch("");
+    setSelectedQuoteId(null);
+    setBusinessName("");
+    setDealDate(new Date().toISOString().slice(0, 10));
+    setDealValue("");
+    setCommissionPct("");
+    setFormError("");
+    onDismissSuccess();
+  }
 
   const sdrQuotes = useMemo(
     () => quotes.filter(q => q.associated_sdr === sdrName),
@@ -1336,6 +1359,16 @@ function AddDealModal({ sdrName, quotes, saving, error, onClose, onSubmit }) {
           <button className="modal-close" onClick={onClose}>x</button>
         </div>
         <div className="modal-body">
+          {success ? (
+            <>
+              <div className="success-banner">{success}</div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={resetForAnother}>Add another</button>
+                <button type="button" className="btn-primary" onClick={onClose}>Done</button>
+              </div>
+            </>
+          ) : (
+          <>
           {(error || formError) && <div className="error-banner">{error || formError}</div>}
           <div className="spiff-tabs">
             <button className={mode === "choose" ? "active" : ""} onClick={() => { setMode("choose"); setSelectedQuoteId(null); }}>
@@ -1431,6 +1464,8 @@ function AddDealModal({ sdrName, quotes, saving, error, onClose, onSubmit }) {
                 <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Add Deal Commission"}</button>
               </div>
             </form>
+          )}
+          </>
           )}
         </div>
       </div>
