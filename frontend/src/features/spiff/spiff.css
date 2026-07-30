@@ -412,6 +412,9 @@
 .spiff-sickday-table th:nth-child(2),
 .spiff-sickday-table th:nth-child(3) { width: 110px; }
 .spiff-sickday-table th:nth-child(5) { width: 90px; }
+/* Override .spiff-record-table's generic "column 3 is a long left-aligned
+   name" rule — in this table column 3 is End Date, not a business name. */
+.spiff-sickday-table td:nth-child(3) { white-space: nowrap; text-align: center; }
 .spiff-sickday-table td:nth-child(4) { white-space: normal; text-align: left; }
 
 /* ── Sick Day calendar (single date or range picker) ────────── */
