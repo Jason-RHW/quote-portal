@@ -601,7 +601,7 @@ export default function SpiffMockPage() {
     try {
       await api.spiff.createSickDay({ ...sickDayData, sdr_id: sdr.id, created_by: "admin" });
       await refreshReportKeepingDetailOpen();
-      setSickDaySuccess(`Saved — sick day added for ${detailRow?.sdr_name}.`);
+      setSickDaySuccess(`Saved — day off added for ${detailRow?.sdr_name}.`);
     } catch (e) {
       setSickDayError(e.message);
     } finally {
@@ -806,7 +806,7 @@ export default function SpiffMockPage() {
               <div>
                 <p className="modal-title">{detailRow.sdr_name}</p>
                 <p className="modal-subtitle">
-                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Meetings {money(detailRow.meeting_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Overall SPIFF {money(detailRow.spiff_payout || 0)}
+                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Meetings {money(detailRow.meeting_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Bonus {money(detailRow.spiff_payout || 0)}
                 </p>
               </div>
               <button className="modal-close" onClick={() => setDetailRow(null)}>x</button>
@@ -825,10 +825,10 @@ export default function SpiffMockPage() {
                 Deal Commission <span>{money(detailRow.deal_payout || 0)}</span>
               </button>
               <button className={detailTab === "sickdays" ? "active" : ""} onClick={() => setDetailTab("sickdays")}>
-                Sick Days <span>{(detailRow.sick_days || []).length}</span>
+                Days Off <span>{(detailRow.sick_days || []).length}</span>
               </button>
               <button className={detailTab === "overall" ? "active" : ""} onClick={() => setDetailTab("overall")}>
-                Overall SPIFF <span>{money(detailRow.spiff_payout || 0)}</span>
+                Bonus <span>{money(detailRow.spiff_payout || 0)}</span>
               </button>
             </div>
             <div className="modal-body spiff-detail-body">
@@ -948,7 +948,7 @@ export default function SpiffMockPage() {
           <div className="modal-box spiff-confirm-modal">
             <div className="modal-header">
               <div>
-                <p className="modal-title">Delete Sick Day?</p>
+                <p className="modal-title">Delete Day Off?</p>
                 <p className="modal-subtitle">
                   {deleteSickDayCandidate.start_date === deleteSickDayCandidate.end_date
                     ? deleteSickDayCandidate.start_date
@@ -958,7 +958,7 @@ export default function SpiffMockPage() {
               <button className="modal-close" onClick={() => setDeleteSickDayCandidate(null)}>x</button>
             </div>
             <div className="modal-body">
-              <div className="spiff-empty">This removes the sick day record for {month}.</div>
+              <div className="spiff-empty">This removes the day off record for {month}.</div>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setDeleteSickDayCandidate(null)}>Cancel</button>
@@ -1403,11 +1403,11 @@ function OverallSpiffTable({ rows, total }) {
   return (
     <section className="spiff-record-section">
       <div className="spiff-section-heading">
-        <span>Overall SPIFF</span>
+        <span>Bonus</span>
         <strong>{money(total)}</strong>
       </div>
       {rows.length === 0 ? (
-        <div className="spiff-empty">No overall SPIFF bonuses in this period.</div>
+        <div className="spiff-empty">No bonuses in this period.</div>
       ) : (
         <div className="spiff-record-groups">
           {groups.map(group => (
@@ -1872,14 +1872,14 @@ function SickDaySection({ rows, onAdd, onDelete }) {
   return (
     <section className="spiff-record-section">
       <div className="spiff-section-heading">
-        <span>Sick Days</span>
+        <span>Days Off</span>
         <strong>{rows.length}</strong>
       </div>
       <div className="spiff-deal-add-row">
-        <button className="btn-primary" onClick={onAdd}>Add Sick Day</button>
+        <button className="btn-primary" onClick={onAdd}>Add Day Off</button>
       </div>
       {rows.length === 0 ? (
-        <div className="spiff-empty">No sick days in this period.</div>
+        <div className="spiff-empty">No days off in this period.</div>
       ) : (
         <table className="data-table spiff-record-table spiff-sickday-table">
           <thead>
@@ -2044,7 +2044,7 @@ function AddSickDayModal({ sdrName, saving, error, success, onClose, onSubmit, o
       <div className="modal-box spiff-rule-modal">
         <div className="modal-header">
           <div>
-            <p className="modal-title">Add Sick Day</p>
+            <p className="modal-title">Add Day Off</p>
             <p className="modal-subtitle">{sdrName}</p>
           </div>
           <button className="modal-close" onClick={onClose}>x</button>
@@ -2068,7 +2068,7 @@ function AddSickDayModal({ sdrName, saving, error, success, onClose, onSubmit, o
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Add Sick Day"}</button>
+              <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Add Day Off"}</button>
             </div>
           </form>
           )}
@@ -2081,7 +2081,7 @@ function AddSickDayModal({ sdrName, saving, error, success, onClose, onSubmit, o
 function groupOverallSpiffRows(rows) {
   const groups = new Map();
   rows.forEach(row => {
-    const name = ruleGroupTitle(row.name || "Overall SPIFF", row);
+    const name = ruleGroupTitle(row.name || "Bonus", row);
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(row);
   });
