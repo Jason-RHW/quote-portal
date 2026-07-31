@@ -402,36 +402,27 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
     for r in ordered_results:
         sdr = r["sdr_name"]
 
-        # Keyed by lowercased name so campaigns that differ only in letter
-        # case (e.g. two independently-created rules both display as "$5
-        # per sample" / "$5 Per Sample") merge into a single row. Excel's
-        # SUMIFS/array-formula criteria matching is case-insensitive, so a
-        # separate row per casing would cause each row's SUMIFS to pull in
-        # every record from every same-named-but-differently-cased row,
-        # double-counting the shared total once per extra row.
+        # Keyed by the exact (case-sensitive) name so two distinct rules that
+        # happen to render the same way except for letter case (e.g. "$5 per
+        # sample" vs "$5 Per Sample" for two different dates) stay separate
+        # rows, each with its own date range. The row formulas below use
+        # EXACT() for case-sensitive matching against the Components sheet —
+        # plain "=" comparison (as SUMIFS/IF use natively) is case-insensitive
+        # in Excel, which would otherwise make each row's total/date-range
+        # pull in the other row's records too.
         campaign_totals = defaultdict(float)
-        campaign_display_names = {}
-
-        def _record_campaign(name, amount):
-            key = name.lower()
-            campaign_display_names.setdefault(key, name)
-            campaign_totals[key] += amount
-
         for record in r.get("samples") or []:
             for campaign in record.get("spiff_campaigns") or []:
                 name = _strip_dates_from_name(campaign.get("name") or "SPIFF")
-                _record_campaign(name, float(campaign.get("rate") or 0) - SAMPLE_BASE_RATE)
+                campaign_totals[name] += float(campaign.get("rate") or 0) - SAMPLE_BASE_RATE
         for record in r.get("quotes") or []:
             for campaign in record.get("spiff_campaigns") or []:
                 name = _strip_dates_from_name(campaign.get("name") or "SPIFF")
-                _record_campaign(name, float(campaign.get("rate") or 0) - QUOTE_BASE_RATE)
+                campaign_totals[name] += float(campaign.get("rate") or 0) - QUOTE_BASE_RATE
         for bonus in r.get("spiff_bonus_details") or []:
             name = _strip_dates_from_name(bonus.get("name") or "SPIFF")
-            _record_campaign(name, float(bonus.get("amount") or 0))
-        campaign_names_sorted = [
-            campaign_display_names[key]
-            for key in sorted(campaign_totals, key=lambda k: -campaign_totals[k])
-        ]
+            campaign_totals[name] += float(bonus.get("amount") or 0)
+        campaign_names_sorted = sorted(campaign_totals, key=lambda n: -campaign_totals[n])
 
         ws.cell(row=row, column=1, value=sdr).font = GROUP_FONT
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=len(header_labels))
@@ -467,12 +458,19 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
             sdr_helper.border = BORDER
             sdr_cell_ref = f"$E{row}"
 
-            match_mask = f"(({SDR_RANGE}={sdr_cell_ref})*({CAMPAIGN_RANGE}=$A{row}))"
+            # EXACT() forces case-sensitive matching — plain "=" comparison
+            # (what SUMIFS/IF use natively) is case-insensitive in Excel,
+            # which would otherwise conflate two distinct campaigns whose
+            # names differ only in letter case.
+            match_mask = f"(EXACT({SDR_RANGE},{sdr_cell_ref})*EXACT({CAMPAIGN_RANGE},$A{row}))"
             start_ref = f"{get_column_letter(START_COL)}{row}"
             end_ref = f"{get_column_letter(END_COL)}{row}"
             start_formula = ArrayFormula(start_ref, f"=MIN(IF({match_mask},{START_RANGE}))")
             end_formula = ArrayFormula(end_ref, f"=MAX(IF({match_mask},{END_RANGE}))")
-            amount_formula = f"=SUMIFS({AMOUNT_RANGE},{SDR_RANGE},{sdr_cell_ref},{CAMPAIGN_RANGE},$A{row})"
+            amount_formula = ArrayFormula(
+                f"{get_column_letter(AMOUNT_COL)}{row}",
+                f"=SUM(IF({match_mask},{AMOUNT_RANGE}))",
+            )
 
             start_cell = ws.cell(row=row, column=START_COL, value=start_formula)
             start_cell.number_format = DATE_FMT
@@ -486,7 +484,7 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
 
             _set_col_width(widths, START_COL, "2026-07-13")
             _set_col_width(widths, END_COL, "2026-07-13")
-            _set_col_width(widths, AMOUNT_COL, _visible_text(campaign_totals[name.lower()], MONEY_FMT))
+            _set_col_width(widths, AMOUNT_COL, _visible_text(campaign_totals[name], MONEY_FMT))
             row += 1
         data_end_row = row - 1
 
