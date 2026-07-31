@@ -402,19 +402,36 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
     for r in ordered_results:
         sdr = r["sdr_name"]
 
+        # Keyed by lowercased name so campaigns that differ only in letter
+        # case (e.g. two independently-created rules both display as "$5
+        # per sample" / "$5 Per Sample") merge into a single row. Excel's
+        # SUMIFS/array-formula criteria matching is case-insensitive, so a
+        # separate row per casing would cause each row's SUMIFS to pull in
+        # every record from every same-named-but-differently-cased row,
+        # double-counting the shared total once per extra row.
         campaign_totals = defaultdict(float)
+        campaign_display_names = {}
+
+        def _record_campaign(name, amount):
+            key = name.lower()
+            campaign_display_names.setdefault(key, name)
+            campaign_totals[key] += amount
+
         for record in r.get("samples") or []:
             for campaign in record.get("spiff_campaigns") or []:
                 name = _strip_dates_from_name(campaign.get("name") or "SPIFF")
-                campaign_totals[name] += float(campaign.get("rate") or 0) - SAMPLE_BASE_RATE
+                _record_campaign(name, float(campaign.get("rate") or 0) - SAMPLE_BASE_RATE)
         for record in r.get("quotes") or []:
             for campaign in record.get("spiff_campaigns") or []:
                 name = _strip_dates_from_name(campaign.get("name") or "SPIFF")
-                campaign_totals[name] += float(campaign.get("rate") or 0) - QUOTE_BASE_RATE
+                _record_campaign(name, float(campaign.get("rate") or 0) - QUOTE_BASE_RATE)
         for bonus in r.get("spiff_bonus_details") or []:
             name = _strip_dates_from_name(bonus.get("name") or "SPIFF")
-            campaign_totals[name] += float(bonus.get("amount") or 0)
-        campaign_names_sorted = sorted(campaign_totals, key=lambda n: -campaign_totals[n])
+            _record_campaign(name, float(bonus.get("amount") or 0))
+        campaign_names_sorted = [
+            campaign_display_names[key]
+            for key in sorted(campaign_totals, key=lambda k: -campaign_totals[k])
+        ]
 
         ws.cell(row=row, column=1, value=sdr).font = GROUP_FONT
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=len(header_labels))
@@ -469,7 +486,7 @@ def _add_combined_spiff_sheet(wb, ordered_results, components_last_row):
 
             _set_col_width(widths, START_COL, "2026-07-13")
             _set_col_width(widths, END_COL, "2026-07-13")
-            _set_col_width(widths, AMOUNT_COL, _visible_text(campaign_totals[name], MONEY_FMT))
+            _set_col_width(widths, AMOUNT_COL, _visible_text(campaign_totals[name.lower()], MONEY_FMT))
             row += 1
         data_end_row = row - 1
 
