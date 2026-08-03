@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -12,6 +12,7 @@ export default function DateFilterCalendar({ dataDates, selectedDate, selectedRa
 
   const dataSet = new Set(dataDates);
   const open = isOpen ?? internalOpen;
+  const wrapRef = useRef(null);
 
   function setOpen(nextOpen) {
     const resolved = typeof nextOpen === "function" ? nextOpen(open) : nextOpen;
@@ -22,6 +23,22 @@ export default function DateFilterCalendar({ dataDates, selectedDate, selectedRa
   useEffect(() => {
     setRangeDraft({ from: selectedRange?.from || "", to: selectedRange?.to || "" });
   }, [selectedRange?.from, selectedRange?.to]);
+
+  useEffect(() => {
+    // mousedown + ref-containment instead of onBlur: Safari doesn't focus a
+    // <button> on click while Chrome does, so relying on blur/relatedTarget
+    // to detect "click outside" closed this panel on the first day click in
+    // Chrome only (focus fell away from the trigger button to the
+    // non-focusable day cell, firing a blur before the second click could
+    // complete a range).
+    function handleClickOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   function shiftMonth(delta) {
     let m = viewMonth + delta, y = viewYear;
@@ -79,7 +96,7 @@ export default function DateFilterCalendar({ dataDates, selectedDate, selectedRa
     : "Filter by date";
 
   return (
-    <div style={{ position: "relative" }} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button
         className={`filter-select filter-dropdown-trigger ${open ? "open" : ""}`}
         style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", ...((selectedDate || hasRange) ? { borderColor: "var(--enterprise-blue)", background: "var(--status-progress-bg)", color: "var(--enterprise-blue)", fontWeight: 600 } : {}) }}
