@@ -727,6 +727,7 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
     names.update(deals_by_sdr)
     names.update(meetings_by_sdr)
     names.update(sick_days_by_sdr)
+    names.update(_working_sdr_names(db, start, end))
 
     results = []
     for name in sorted(names):
@@ -896,6 +897,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
     names.update(deals_by_sdr)
     names.update(meetings_by_sdr)
     names.update(sick_days_by_sdr)
+    names.update(_working_sdr_names(db, month_start, month_end))
     for rule in rules:
         if rule.get("rule_type") == "threshold_bonus" and (rule.get("qualification_scope") or "individual") == "team":
             names.update(sdr.full_name for sdr in _bonus_eligible_sdrs(db, rule))
