@@ -31,6 +31,13 @@ export default function DateFilterCalendar({ dataDates, selectedDate, selectedRa
     // Chrome only (focus fell away from the trigger button to the
     // non-focusable day cell, firing a blur before the second click could
     // complete a range).
+    //
+    // Guarding on `open` matters because this shares a mutually-exclusive
+    // openFilter state with the other filter dropdowns on the page:
+    // without it, this listener would still fire (and close whichever
+    // dropdown IS open) on every outside mousedown even while this
+    // calendar itself is closed.
+    if (!open) return undefined;
     function handleClickOutside(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
         setOpen(false);
@@ -38,7 +45,7 @@ export default function DateFilterCalendar({ dataDates, selectedDate, selectedRa
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [open]);
 
   function shiftMonth(delta) {
     let m = viewMonth + delta, y = viewYear;

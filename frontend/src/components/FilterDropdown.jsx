@@ -9,6 +9,16 @@ export default function FilterDropdown({ value, options, open, onOpenChange, onC
     // mousedown (before the option's click event) could unmount the menu
     // before the click ever reaches the option button, silently swallowing
     // the selection. See DateFilterCalendar.jsx for the same fix.
+    //
+    // Guarding on `open` matters here specifically because several
+    // FilterDropdown instances share one mutually-exclusive `openFilter`
+    // state in the parent: without this guard, every *closed* instance's
+    // listener still fires on any outside mousedown (since the click is
+    // "outside" their own wrapRef too) and calls onOpenChange(false) —
+    // which collapses the shared state to null on mousedown, unmounting
+    // the one dropdown that *is* open before its own option's click event
+    // can fire.
+    if (!open) return undefined;
     function handleClickOutside(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
         onOpenChange(false);
@@ -16,7 +26,7 @@ export default function FilterDropdown({ value, options, open, onOpenChange, onC
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onOpenChange]);
+  }, [open, onOpenChange]);
 
   return (
     <div ref={wrapRef} className="filter-dropdown">
