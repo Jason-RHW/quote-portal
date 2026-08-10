@@ -70,6 +70,9 @@ const GLOVE_PRODUCT_IMAGES = {
   "Schneider (Exam-grade Nitrile)": "/products/schneider-logo.png",
   "Work Gloves (Enhanced Gripping)": "/products/work-gloves.jpg",
   "Cut-resistant Gloves (Cut Hazard Protection)": "/products/cut-resistant-gloves.jpg",
+  // "Safe & Savvy (Kitchen Cut Protection)" has no dedicated product photo
+  // yet — omitted here falls back to no image (see ProductCheckboxGrid
+  // below), same as any other option not in this map.
 };
 
 function ProductCheckboxGrid({ options, value, onChange }) {

@@ -25,6 +25,7 @@ export const BRAND_COLORS = {
   "Cut Resistant Gloves": { bg: "#ECFEFF", color: "#0E7490" },
   "Work Gloves": { bg: "#F5F3FF", color: "#6D28D9" },
   Bandage: { bg: "#FEF2F2", color: "#B91C1C" },
+  "Safe & Savvy Cut Resistant Gloves": { bg: "#FFFBEB", color: "#B45309" },
 };
 
 export function brandStyle(brand) {

@@ -41,6 +41,7 @@ BRANDS = [
     ("Cut Resistant Gloves", "#ECFEFF", "#0E7490"),
     ("Work Gloves", "#F5F3FF", "#6D28D9"),
     ("Bandage", "#FEF2F2", "#B91C1C"),
+    ("Safe & Savvy Cut Resistant Gloves", "#FFFBEB", "#B45309"),
 ]
 
 FORM_FIELDS = [
@@ -49,6 +50,7 @@ FORM_FIELDS = [
         "Economy Nitrile (Cost-Effective)", "Premium Nitrile (Enhanced Durability)",
         "Industrial Nitrile (Heavy-Duty Use)", "Food-Grade Vinyl (Food Handling)",
         "Work Gloves (Enhanced Grip) - Reusable", "Cut-Resistant Gloves - Reusable",
+        "Safe & Savvy (Kitchen Cut Protection)",
     ], True, True, 0),
     ("size", "Size", FormFieldType.dropdown, ["XS", "S", "M", "L", "XL", "XXL"], False, True, 1),
     ("color", "Color", FormFieldType.dropdown, [

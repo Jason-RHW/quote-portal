@@ -33,6 +33,7 @@ DEFAULT_FIELDS = [
             "Schneider (Exam-grade Nitrile)",
             "Work Gloves (Enhanced Gripping)",
             "Cut-resistant Gloves (Cut Hazard Protection)",
+            "Safe & Savvy (Kitchen Cut Protection)",
         ],
         True,
         True,
