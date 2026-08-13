@@ -49,4 +49,5 @@ export const api = {
   sdrs: () => request("/public/sdrs"),
   formFields: () => request("/public/form-fields"),
   submit: (data) => request("/public/samples/submit", { method: "POST", body: JSON.stringify(data) }),
+  submitQuote: (data) => request("/public/quotes/submit", { method: "POST", body: JSON.stringify(data) }),
 };

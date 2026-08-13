@@ -6,6 +6,10 @@ from app.models.db_models import PurchaseOrder
 from app.schemas.schemas import POCreate, POUpdate
 
 
+def _line_items_subtotal(line_items) -> float:
+    return round(sum((item.quantity or 0) * (item.unit_price or 0) for item in line_items), 2)
+
+
 def list_pos(db: Session) -> List[PurchaseOrder]:
     return db.query(PurchaseOrder).order_by(PurchaseOrder.date_of_po.desc().nullslast()).all()
 
@@ -19,10 +23,18 @@ def create_po(db: Session, data: POCreate) -> PurchaseOrder:
     if data.associated_sdr:
         extra["associated_sdr"] = data.associated_sdr
 
+    po_value = data.po_value
+    if data.line_items:
+        extra["line_items"] = [item.model_dump() for item in data.line_items]
+        po_value = _line_items_subtotal(data.line_items)
+
     po = PurchaseOrder(
         business_name=data.business_name,
-        po_value=data.po_value,
+        po_number=data.po_number,
+        ship_to=data.ship_to,
+        po_value=po_value,
         date_of_po=data.date_of_po,
+        status=data.status,
         quote_id=data.quote_id,
         extra=extra,
     )
@@ -46,6 +58,16 @@ def update_po(db: Session, po_id: str, data: POUpdate) -> Optional[PurchaseOrder
             extra["associated_sdr"] = sdr
         else:
             extra.pop("associated_sdr", None)
+        po.extra = extra
+
+    if "line_items" in update_data:
+        line_items = update_data.pop("line_items")
+        extra = dict(po.extra or {})
+        if line_items:
+            extra["line_items"] = line_items
+            update_data["po_value"] = _line_items_subtotal(data.line_items)
+        else:
+            extra.pop("line_items", None)
         po.extra = extra
 
     for field, value in update_data.items():

@@ -5,13 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import verify_token, verify_sdr_token, check_sdr_code, create_sdr_token
-from app.services import sample_service
+from app.services import sample_service, quote_service
 from app.schemas.schemas import (
     SampleRequestCreate, SampleRequestUpdate, SampleRequestSubmit, SampleRequestOut,
     SampleRequestStatusChange, BatchStatusChange, BatchArchive, AddressVerifyConfirm,
     BrandCreate, BrandUpdate, BrandOut, SdrCreate, SdrUpdate, SdrOut,
     FormFieldCreate, FormFieldUpdate, FormFieldOut,
-    SampleRequestEventOut,
+    SampleRequestEventOut, QuoteRequestSubmit, QuoteOut,
 )
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -250,3 +250,16 @@ def submit(
     # Same non-blocking, best-effort treatment for the manager notification email.
     background_tasks.add_task(sample_service.run_email_notification_in_background, req.id)
     return req
+
+
+@public_router.post("/quotes/submit", response_model=QuoteOut)
+def submit_quote_request(
+    data: QuoteRequestSubmit,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _=Depends(verify_sdr_token),
+):
+    quote = quote_service.create_quote_request(db, data)
+    # Same non-blocking, best-effort treatment as the sample request notification.
+    background_tasks.add_task(quote_service.run_quote_email_notification_in_background, quote.id)
+    return quote

@@ -1,24 +1,19 @@
 import "../../components/shared.css";
 import { brandStyle } from "../../config/brandColors";
+import { displayShipTo } from "../../utils/shipTo";
+
+const STATUS_CLASSES = {
+  "Received":  "requested",
+  "Processed": "progress",
+  "Fulfilled": "fulfilled",
+  "Stalled":   "stalled",
+};
 
 function fmt$(v) {
   return (v ?? 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 function fmtDate(d) {
   return d ? new Date(d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—";
-}
-
-const STATUS_CLASSES = {
-  "Requested": "requested",
-  "In Progress": "progress",
-  "On Hold": "hold",
-  "Fulfilled": "fulfilled",
-  "Stalled": "stalled",
-  "Rejected": "rejected",
-};
-
-function StatusBadge({ status }) {
-  return <span className={`status-badge ${STATUS_CLASSES[status] || "progress"}`}>{status}</span>;
 }
 
 function BrandChip({ brand }) {
@@ -33,8 +28,8 @@ function BrandChip({ brand }) {
   );
 }
 
-export default function QuoteDetailDrawer({ quote, onClose, onEdit }) {
-  if (!quote) return null;
+export default function PODetailDrawer({ po, linkedQuote, onClose, onEdit }) {
+  if (!po) return null;
 
   return (
     <>
@@ -43,52 +38,43 @@ export default function QuoteDetailDrawer({ quote, onClose, onEdit }) {
 
         <div className="drawer-header">
           <div>
-            <p className="drawer-title">{quote.business_name}</p>
-            <StatusBadge status={quote.status} />
+            <p className="drawer-title">{po.business_name}</p>
+            {po.po_number && <span className="status-badge progress">{po.po_number}</span>}
+            {po.status && <span className={`status-badge ${STATUS_CLASSES[po.status] || "progress"}`} style={{ marginLeft: 6 }}>{po.status}</span>}
           </div>
           <button className="drawer-close" onClick={onClose} aria-label="Close">×</button>
         </div>
 
         <div className="drawer-body">
 
-          {/* Value — big display */}
+          {/* Subtotal — big display */}
           <div className="drawer-field">
-            <div className="drawer-field-label">Quote value</div>
-            <div className="drawer-value-big">{fmt$(quote.quote_value)}</div>
+            <div className="drawer-field-label">Subtotal</div>
+            <div className="drawer-value-big">{fmt$(po.subtotal ?? po.po_value)}</div>
           </div>
 
           {/* Two-column grid for the metadata */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 20 }}>
             <div className="drawer-field" style={{ marginBottom: 0 }}>
-              <div className="drawer-field-label">Date requested</div>
-              <div className="drawer-field-value">{fmtDate(quote.date_requested)}</div>
+              <div className="drawer-field-label">PO number</div>
+              <div className="drawer-field-value">{po.po_number || "—"}</div>
             </div>
             <div className="drawer-field" style={{ marginBottom: 0 }}>
-              <div className="drawer-field-label">Status</div>
-              <div className="drawer-field-value"><StatusBadge status={quote.status} /></div>
-            </div>
-            <div className="drawer-field" style={{ marginBottom: 0 }}>
-              <div className="drawer-field-label">Requested by</div>
-              <div className="drawer-field-value">{quote.requested_by || "—"}</div>
+              <div className="drawer-field-label">Date of PO</div>
+              <div className="drawer-field-value">{fmtDate(po.date_of_po)}</div>
             </div>
             <div className="drawer-field" style={{ marginBottom: 0 }}>
               <div className="drawer-field-label">Associated SDR</div>
-              <div className="drawer-field-value">{quote.associated_sdr || "—"}</div>
+              <div className="drawer-field-value">{po.associated_sdr || "—"}</div>
             </div>
             <div className="drawer-field" style={{ marginBottom: 0 }}>
-              <div className="drawer-field-label">Contact email</div>
-              <div className="drawer-field-value">{quote.contact_email || "—"}</div>
+              <div className="drawer-field-label">Linked quote</div>
+              <div className="drawer-field-value">{linkedQuote ? linkedQuote.business_name : "—"}</div>
             </div>
-            <div className="drawer-field" style={{ marginBottom: 0 }}>
-              <div className="drawer-field-label">Contact phone</div>
-              <div className="drawer-field-value">{quote.contact_phone || "—"}</div>
+            <div className="drawer-field full" style={{ marginBottom: 0, gridColumn: "1 / -1" }}>
+              <div className="drawer-field-label">Ship to</div>
+              <div className="drawer-field-value" style={{ whiteSpace: "pre-wrap" }}>{displayShipTo(po.ship_to) || "—"}</div>
             </div>
-          </div>
-
-          {/* Note */}
-          <div className="drawer-field">
-            <div className="drawer-field-label">Note</div>
-            <div className="drawer-field-value" style={{ whiteSpace: "pre-wrap" }}>{quote.notes || "—"}</div>
           </div>
 
           {/* Line items */}
@@ -98,21 +84,29 @@ export default function QuoteDetailDrawer({ quote, onClose, onEdit }) {
             <div className="section-divider-line" />
           </div>
 
-          {quote.line_items && quote.line_items.length > 0 ? (
+          {po.line_items && po.line_items.length > 0 ? (
             <table className="drawer-line-items">
               <thead>
                 <tr>
                   <th>Brand</th>
                   <th>SKU</th>
-                  <th>Cases</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
+                  <th>Unit price</th>
+                  <th>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {quote.line_items.map((item, i) => (
+                {po.line_items.map((item, i) => (
                   <tr key={i}>
                     <td><BrandChip brand={item.brand} /></td>
                     <td style={{ color: "var(--text-secondary)" }}>{item.sku || "—"}</td>
-                    <td style={{ color: "var(--text-secondary)" }}>{item.cases ?? "—"}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>{item.quantity ?? "—"}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>{item.unit || "—"}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>{item.unit_price != null ? fmt$(item.unit_price) : "—"}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>
+                      {item.quantity != null && item.unit_price != null ? fmt$(item.quantity * item.unit_price) : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -128,13 +122,13 @@ export default function QuoteDetailDrawer({ quote, onClose, onEdit }) {
             <div className="drawer-field" style={{ marginBottom: 0 }}>
               <div className="drawer-field-label">Created</div>
               <div className="drawer-field-value" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {fmtDate(quote.created_at)}
+                {fmtDate(po.created_at)}
               </div>
             </div>
             <div className="drawer-field" style={{ marginBottom: 0 }}>
               <div className="drawer-field-label">Last updated</div>
               <div className="drawer-field-value" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {fmtDate(quote.updated_at)}
+                {fmtDate(po.updated_at)}
               </div>
             </div>
           </div>
@@ -143,8 +137,8 @@ export default function QuoteDetailDrawer({ quote, onClose, onEdit }) {
 
         <div className="drawer-footer">
           <button className="btn-secondary" onClick={onClose}>Close</button>
-          <button className="btn-primary" onClick={() => { onClose(); onEdit(quote); }}>
-            Edit quote
+          <button className="btn-primary" onClick={() => { onClose(); onEdit(po); }}>
+            Edit PO
           </button>
         </div>
 

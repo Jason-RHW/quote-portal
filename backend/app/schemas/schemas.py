@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List
 from uuid import UUID
 from pydantic import BaseModel, computed_field, field_validator, model_validator
 
-from app.models.db_models import QuoteStatus
+from app.models.db_models import QuoteStatus, POStatus
 
 
 class LineItem(BaseModel):
@@ -15,19 +15,25 @@ class LineItem(BaseModel):
 class QuoteBase(BaseModel):
     business_name: str
     requested_by: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
     quote_value: float = 0
     product_brand: Optional[str] = None
     date_requested: Optional[datetime] = None
     status: QuoteStatus = QuoteStatus.in_progress
+    notes: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
 
 
 class QuoteCreate(BaseModel):
     business_name: str
     requested_by: str
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
     quote_value: float
     date_requested: datetime
     status: QuoteStatus = QuoteStatus.in_progress
+    notes: Optional[str] = None
     line_items: List[LineItem]
     associated_sdr: Optional[str] = None   # stored in extra — no migration needed
     extra: Optional[Dict[str, Any]] = None
@@ -45,23 +51,44 @@ class QuoteCreate(BaseModel):
 class QuoteUpdate(BaseModel):
     business_name: Optional[str] = None
     requested_by: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
     quote_value: Optional[float] = None
     product_brand: Optional[str] = None
     date_requested: Optional[datetime] = None
     status: Optional[QuoteStatus] = None
+    notes: Optional[str] = None
     line_items: Optional[List[LineItem]] = None
     associated_sdr: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
+
+
+class QuoteRequestSubmit(BaseModel):
+    """The SDR-facing quote request form's payload — deliberately narrower
+    than QuoteCreate: no dollar value, since pricing is filled in by
+    whoever works the quote, not the requesting SDR. Brand line items are
+    optional here (vs. required on QuoteCreate) — the SDR may know the
+    brand(s) of interest, but shouldn't be blocked from submitting if not."""
+    sdr_id: str
+    business_name: str
+    contact_name: str
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    notes: Optional[str] = None
+    line_items: Optional[List[LineItem]] = None
 
 
 class QuoteOut(BaseModel):
     id: str
     business_name: str
     requested_by: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
     quote_value: float
     product_brand: Optional[str] = None
     date_requested: Optional[datetime] = None
     status: QuoteStatus
+    notes: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
@@ -84,24 +111,40 @@ class QuoteOut(BaseModel):
         from_attributes = True
 
 
+class POLineItem(BaseModel):
+    brand: str
+    sku: Optional[str] = None
+    quantity: Optional[float] = None
+    unit: Optional[str] = None          # "Case" | "Box" — validated client-side, not a DB enum
+    unit_price: Optional[float] = None
+
+
 class POBase(BaseModel):
     business_name: str
+    po_number: Optional[str] = None
+    ship_to: Optional[str] = None
     po_value: float = 0
     date_of_po: Optional[datetime] = None
+    status: POStatus = POStatus.received
     quote_id: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
 
 
 class POCreate(POBase):
     associated_sdr: Optional[str] = None   # stored in extra — no migration needed
+    line_items: Optional[List[POLineItem]] = None   # stored in extra — no migration needed
 
 
 class POUpdate(BaseModel):
     business_name: Optional[str] = None
+    po_number: Optional[str] = None
+    ship_to: Optional[str] = None
     po_value: Optional[float] = None
     date_of_po: Optional[datetime] = None
+    status: Optional[POStatus] = None
     quote_id: Optional[str] = None
     associated_sdr: Optional[str] = None
+    line_items: Optional[List[POLineItem]] = None
     extra: Optional[Dict[str, Any]] = None
 
 
@@ -115,8 +158,36 @@ class POOut(POBase):
     def associated_sdr(self) -> Optional[str]:
         return (self.extra or {}).get("associated_sdr")
 
+    @computed_field
+    @property
+    def line_items(self) -> List[POLineItem]:
+        items = (self.extra or {}).get("line_items")
+        return [POLineItem(**item) for item in items] if items else []
+
+    @computed_field
+    @property
+    def subtotal(self) -> float:
+        items = (self.extra or {}).get("line_items")
+        if not items:
+            return self.po_value
+        return round(sum((item.get("quantity") or 0) * (item.get("unit_price") or 0) for item in items), 2)
+
     class Config:
         from_attributes = True
+
+
+class POExtractionResult(BaseModel):
+    """AI-extracted draft from an uploaded PDF PO — never persisted directly,
+    the frontend seeds the New PO form with this for the manager to review."""
+    po_number: Optional[str] = None
+    date_of_po: Optional[str] = None
+    business_name: Optional[str] = None
+    ship_to_business_name: Optional[str] = None
+    ship_to_address_line1: Optional[str] = None
+    ship_to_address_line2: Optional[str] = None
+    ship_to_city: Optional[str] = None
+    ship_to_state_zip: Optional[str] = None
+    line_items: List[POLineItem] = []
 
 
 class AccountRegBase(BaseModel):

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.db_models import FormField, Sdr, SampleRequest
+from app.models.db_models import FormField, Sdr, SampleRequest, Quote
 
 
 class EmailSendError(Exception):
@@ -17,12 +17,30 @@ def _recipients() -> List[str]:
     return [addr.strip() for addr in raw.split(",") if addr.strip()]
 
 
+def _quote_request_recipients() -> List[str]:
+    # Falls back to the sample request list so a single Vercel env var
+    # (SAMPLE_REQUEST_NOTIFICATION_EMAILS) covers both notification types
+    # unless QUOTE_REQUEST_NOTIFICATION_EMAILS is explicitly set to something different.
+    raw = os.getenv("QUOTE_REQUEST_NOTIFICATION_EMAILS", "")
+    recipients = [addr.strip() for addr in raw.split(",") if addr.strip()]
+    return recipients or _recipients()
+
+
 def is_configured() -> bool:
     return bool(
         os.getenv("SMTP_HOST")
         and os.getenv("SMTP_USERNAME")
         and os.getenv("SMTP_PASSWORD")
         and _recipients()
+    )
+
+
+def is_quote_request_configured() -> bool:
+    return bool(
+        os.getenv("SMTP_HOST")
+        and os.getenv("SMTP_USERNAME")
+        and os.getenv("SMTP_PASSWORD")
+        and _quote_request_recipients()
     )
 
 
@@ -108,3 +126,42 @@ def build_sample_request_notification(db: Session, req: SampleRequest) -> tuple:
 def send_sample_request_notification(db: Session, req: SampleRequest) -> None:
     subject, body = build_sample_request_notification(db, req)
     send_email(subject, body, _recipients())
+
+
+def build_quote_request_notification(quote: Quote) -> tuple:
+    subject = f"New Quote Request — {quote.business_name}"
+
+    associated_sdr = (quote.extra or {}).get("associated_sdr")
+
+    lines = [
+        f"Requested by: {_format_value(associated_sdr)}",
+        f"Date requested: {quote.date_requested.isoformat() if quote.date_requested else '—'}",
+        "",
+        "Contact & Business",
+        f"  Contact name: {_format_value(quote.requested_by)}",
+        f"  Email: {_format_value(quote.contact_email)}",
+        f"  Phone: {_format_value(quote.contact_phone)}",
+        f"  Business name: {_format_value(quote.business_name)}",
+    ]
+
+    line_items = (quote.extra or {}).get("line_items") or []
+    if line_items:
+        lines += ["", "Brand line items"]
+        for item in line_items:
+            sku = f", SKU {item['sku']}" if item.get("sku") else ""
+            cases = f", {item['cases']} cases" if item.get("cases") else ""
+            lines.append(f"  {item['brand']}{sku}{cases}")
+
+    if quote.notes:
+        lines += ["", "Note", f"  {quote.notes}"]
+
+    frontend_url = os.getenv("FRONTEND_URL")
+    if frontend_url:
+        lines += ["", f"Review in the Quotes page: {frontend_url}"]
+
+    return subject, "\n".join(lines)
+
+
+def send_quote_request_notification(quote: Quote) -> None:
+    subject, body = build_quote_request_notification(quote)
+    send_email(subject, body, _quote_request_recipients())

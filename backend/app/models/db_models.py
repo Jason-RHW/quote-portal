@@ -29,9 +29,12 @@ def gen_id():
 
 
 class QuoteStatus(str, enum.Enum):
+    requested = "Requested"
     in_progress = "In Progress"
+    on_hold = "On Hold"
     fulfilled = "Fulfilled"
     stalled = "Stalled"
+    rejected = "Rejected"
 
 
 class Quote(Base):
@@ -40,14 +43,24 @@ class Quote(Base):
     id = Column(String, primary_key=True, default=gen_id)
     business_name = Column(String, nullable=False, index=True)
     requested_by = Column(String, nullable=True)
+    contact_email = Column(String, nullable=True)
+    contact_phone = Column(String, nullable=True)
     quote_value = Column(Float, nullable=False, default=0)
     product_brand = Column(String, nullable=True)
     date_requested = Column(DateTime, nullable=True)
-    status = Column(SAEnum(QuoteStatus), nullable=False, default=QuoteStatus.in_progress)
+    status = Column(SAEnum(QuoteStatus, native_enum=False, length=20), nullable=False, default=QuoteStatus.in_progress)
+    notes = Column(String, nullable=True)
     extra = Column(JSON, nullable=True, default=dict)
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class POStatus(str, enum.Enum):
+    received = "Received"
+    processed = "Processed"
+    fulfilled = "Fulfilled"
+    stalled = "Stalled"
 
 
 class PurchaseOrder(Base):
@@ -55,8 +68,11 @@ class PurchaseOrder(Base):
 
     id = Column(String, primary_key=True, default=gen_id)
     business_name = Column(String, nullable=False, index=True)
+    po_number = Column(String, nullable=True, index=True)
+    ship_to = Column(String, nullable=True)
     po_value = Column(Float, nullable=False, default=0)
     date_of_po = Column(DateTime, nullable=True)
+    status = Column(SAEnum(POStatus, native_enum=False, length=20), nullable=False, default=POStatus.received)
     quote_id = Column(String, nullable=True, index=True)  # optional link back to the quote it closed
     extra = Column(JSON, nullable=True, default=dict)
 

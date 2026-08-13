@@ -441,8 +441,184 @@ function RequestForm() {
   );
 }
 
+const QUOTE_REQUIRED_FIELDS = [
+  ["sdr_id", "Your name"],
+  ["contact_name", "Contact full name"],
+  ["business_name", "Business name"],
+];
+
+const QUOTE_BRANDS = ["TitanFlex", "SwiftGrip", "Schneider", "SwiftLite"];
+
+function blankQuoteLine() { return { brand: "", sku: "", cases: "" }; }
+
+function QuoteRequestForm() {
+  const [sdrs, setSdrs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [form, setForm] = useState({
+    sdr_id: "", contact_name: "", contact_email: "", contact_phone: "",
+    business_name: "", notes: "",
+  });
+  const [lineItems, setLineItems] = useState([blankQuoteLine()]);
+
+  useEffect(() => {
+    api.sdrs().then(setSdrs).catch(e => setError(e.message)).finally(() => setLoading(false));
+  }, []);
+
+  function setField(k, v) { setForm(f => ({ ...f, [k]: v })); }
+  function setLine(i, field, value) {
+    setLineItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: value } : item));
+  }
+  function addLine() { setLineItems(prev => [...prev, blankQuoteLine()]); }
+  function removeLine(i) { if (lineItems.length > 1) setLineItems(prev => prev.filter((_, idx) => idx !== i)); }
+
+  function validate() {
+    for (const [key, label] of QUOTE_REQUIRED_FIELDS) {
+      if (!hasValue(form[key])) return `${label} is required.`;
+    }
+    return "";
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    const validationError = validate();
+    if (validationError) { setError(validationError); return; }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.submitQuote({
+        sdr_id: form.sdr_id,
+        business_name: form.business_name,
+        contact_name: form.contact_name,
+        contact_email: form.contact_email || null,
+        contact_phone: form.contact_phone || null,
+        notes: form.notes || null,
+        line_items: lineItems
+          .filter(l => l.brand)
+          .map(l => ({
+            brand: l.brand,
+            sku:   l.sku   || null,
+            cases: l.cases ? parseInt(l.cases, 10) : null,
+          })),
+      });
+      setSubmitted(true);
+    } catch (e2) {
+      setError(e2.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function resetForm() {
+    setSubmitted(false);
+    setForm({ sdr_id: "", contact_name: "", contact_email: "", contact_phone: "", business_name: "", notes: "" });
+    setLineItems([blankQuoteLine()]);
+  }
+
+  if (loading) return <div className="wrap"><p>Loading…</p></div>;
+
+  if (submitted) {
+    return (
+      <div className="wrap">
+        <div className="success">
+          <div className="check">✓</div>
+          <h2>Quote request submitted</h2>
+          <p>{form.business_name} has been sent to the team to work up a quote.</p>
+          <button onClick={resetForm}>Submit another request</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wrap">
+      <div className="page-header">
+        <p className="page-title">Request a Quote</p>
+        <p className="page-sub">Fill this out for a prospect who needs pricing. The team will follow up with the quote.</p>
+      </div>
+
+      <form className="data-card" onSubmit={submit}>
+        {error && <div className="error-banner">{error}</div>}
+
+        <p className="form-section-label">Requested by</p>
+        <div className="form-grid form-grid-2">
+          <div className="form-field">
+            <label>Your name</label>
+            <select value={form.sdr_id} onChange={e => setField("sdr_id", e.target.value)} required>
+              <option value="">Select your name…</option>
+              {sdrs.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+            </select>
+          </div>
+          <div className="form-field">
+            <label>Date <span className="hint">auto-filled</span></label>
+            <input value={new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} disabled />
+          </div>
+        </div>
+
+        <p className="form-section-label">Contact & business</p>
+        <div className="form-grid form-grid-2">
+          <div className="form-field">
+            <label>Contact full name</label>
+            <input value={form.contact_name} onChange={e => setField("contact_name", e.target.value)}
+              required
+              onBlur={e => { if (e.target.value.trim()) setField("contact_name", formatName(e.target.value)); }} />
+          </div>
+          <div className="form-field">
+            <label>Business name</label>
+            <input value={form.business_name} onChange={e => setField("business_name", e.target.value)} required />
+          </div>
+          <div className="form-field">
+            <label>Email</label>
+            <input value={form.contact_email} onChange={e => setField("contact_email", e.target.value)}
+              onBlur={e => { if (e.target.value.trim()) setField("contact_email", formatEmail(e.target.value)); }} />
+          </div>
+          <div className="form-field">
+            <label>Phone</label>
+            <input value={form.contact_phone} onChange={e => setField("contact_phone", e.target.value)}
+              onBlur={e => { if (e.target.value.trim()) setField("contact_phone", formatPhone(e.target.value)); }} />
+          </div>
+        </div>
+
+        <p className="form-section-label">Brand line items <span className="hint">optional — leave blank if you're not sure yet</span></p>
+        <div className="line-items-header">
+          <span>Brand</span>
+          <span>SKU</span>
+          <span>Cases</span>
+          <span />
+        </div>
+        {lineItems.map((item, i) => (
+          <div className="line-item-row" key={i}>
+            <select value={item.brand} onChange={e => setLine(i, "brand", e.target.value)}>
+              <option value="">Select brand</option>
+              {QUOTE_BRANDS.map(b => <option key={b}>{b}</option>)}
+            </select>
+            <input placeholder="SKU (optional)" value={item.sku} onChange={e => setLine(i, "sku", e.target.value)} />
+            <input type="number" min="1" placeholder="0" value={item.cases} onChange={e => setLine(i, "cases", e.target.value)} />
+            <button type="button" className="line-item-remove" onClick={() => removeLine(i)} aria-label="Remove line">×</button>
+          </div>
+        ))}
+        <button type="button" className="add-line-btn" onClick={addLine}>+ Add brand line</button>
+
+        <p className="form-section-label">Notes</p>
+        <div className="form-field full">
+          <label>Note <span className="hint">visible to the team working the quote</span></label>
+          <textarea value={form.notes} onChange={e => setField("notes", e.target.value)} />
+        </div>
+
+        <div className="form-footer">
+          <button className="btn-primary" type="submit" disabled={submitting}>{submitting ? "Submitting…" : "Submit Request"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(hasToken());
+  const [tab, setTab] = useState("sample");
 
   if (!loggedIn) return <LoginGate onLoggedIn={() => setLoggedIn(true)} />;
 
@@ -452,7 +628,11 @@ export default function App() {
         <img src="/Schneider-Direct.png" alt="Schneider Direct" className="topbar-logo-img" />
         <span className="app-topbar-title">Sample Request</span>
       </div>
-      <RequestForm />
+      <div className="page-tabs">
+        <button className={`page-tab ${tab === "sample" ? "active" : ""}`} onClick={() => setTab("sample")}>Sample Request</button>
+        <button className={`page-tab ${tab === "quote" ? "active" : ""}`} onClick={() => setTab("quote")}>Quote Request</button>
+      </div>
+      {tab === "sample" ? <RequestForm /> : <QuoteRequestForm />}
     </div>
   );
 }

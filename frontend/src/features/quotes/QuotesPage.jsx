@@ -31,9 +31,17 @@ function inDateRange(dateStr, period) {
 function fmt$(v) { return (v??0).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}); }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"; }
 
+const STATUS_CLASSES = {
+  "Requested": "requested",
+  "In Progress": "progress",
+  "On Hold": "hold",
+  "Fulfilled": "fulfilled",
+  "Stalled": "stalled",
+  "Rejected": "rejected",
+};
+
 function StatusBadge({ status }) {
-  const cls = {"In Progress":"progress",Fulfilled:"fulfilled",Stalled:"stalled"}[status]||"progress";
-  return <span className={`status-badge ${cls}`}>{status}</span>;
+  return <span className={`status-badge ${STATUS_CLASSES[status] || "progress"}`}>{status}</span>;
 }
 
 export default function QuotesPage() {
@@ -144,7 +152,7 @@ export default function QuotesPage() {
 
         {/* Row 1: status tabs + search */}
         <div className="toolbar">
-          {[{key:null,label:"All"},{key:"In Progress",label:"In progress"},{key:"Fulfilled",label:"Fulfilled"},{key:"Stalled",label:"Stalled"}].map(f => (
+          {[{key:null,label:"All"},{key:"Requested",label:"Requested"},{key:"In Progress",label:"In progress"},{key:"On Hold",label:"On hold"},{key:"Fulfilled",label:"Fulfilled"},{key:"Stalled",label:"Stalled"},{key:"Rejected",label:"Rejected"}].map(f => (
             <button key={String(f.key)} className={`filter-tab ${statusFilter===f.key?"active":""}`} onClick={() => setStatusFilter(f.key)}>
               {f.label}
               <span className="tab-count">{f.key ? (counts[f.key]||0) : quotes.length}</span>

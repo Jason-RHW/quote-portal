@@ -28,6 +28,33 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+async function uploadFile(path, file) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Deliberately no Content-Type here — the browser sets
+      // multipart/form-data with the correct boundary itself when the
+      // body is a FormData instance. Setting it manually breaks the upload.
+    },
+    body: formData,
+  });
+  if (res.status === 401) {
+    localStorage.removeItem("portal_token");
+    localStorage.removeItem("portal_token_expiry");
+    window.location.reload();
+    return;
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${path} failed (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
 async function downloadFile(path, filename) {
   const token = getToken();
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -69,6 +96,7 @@ export const api = {
     create: (data)     => request("/pos",        { method: "POST",  body: JSON.stringify(data) }),
     update: (id, data) => request(`/pos/${id}`,  { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id)       => request(`/pos/${id}`,  { method: "DELETE" }),
+    extractPdf: (file) => uploadFile("/pos/extract-pdf", file),
   },
   accounts: {
     list:   ()         => request("/accounts"),

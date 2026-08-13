@@ -6,8 +6,10 @@ from app.database import engine, Base
 from app.auth import verify_token
 from app.routers import quotes, pos, accounts, dashboard, sdr_performance, cron, samples, spiff
 from app.routers import auth as auth_router
+from app import startup_migrations
 
 Base.metadata.create_all(bind=engine)
+startup_migrations.run(engine)
 
 app = FastAPI(title="Schneider Quote Portal")
 

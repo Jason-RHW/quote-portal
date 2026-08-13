@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import "../../components/shared.css";
 
 const BRANDS   = ["TitanFlex", "SwiftGrip", "Schneider", "SwiftLite"];
-const STATUSES = ["In Progress", "Fulfilled", "Stalled"];
+const STATUSES = ["Requested", "In Progress", "On Hold", "Fulfilled", "Stalled", "Rejected"];
 
 function blankLine() { return { brand: "", sku: "", cases: "" }; }
 
@@ -15,10 +15,13 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
   const [form, setForm] = useState({
     business_name:  quote.business_name  || "",
     requested_by:   quote.requested_by   || "",
+    contact_email:  quote.contact_email   || "",
+    contact_phone:  quote.contact_phone   || "",
     quote_value:    quote.quote_value     ?? "",
     date_requested: quote.date_requested  ? quote.date_requested.slice(0, 10) : "",
     status:         quote.status          || "In Progress",
     associated_sdr: quote.associated_sdr  || "",
+    notes:          quote.notes           || "",
   });
   const [lineItems, setLineItems] = useState(existingLines);
   const [sdrs, setSdrs] = useState([]);
@@ -47,7 +50,7 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
     const errs = [];
     if (!form.business_name.trim()) errs.push("Business name is required.");
     if (!form.requested_by.trim())  errs.push("Requested by is required.");
-    if (!form.quote_value || parseFloat(form.quote_value) <= 0) errs.push("Quote value is required.");
+    if (form.quote_value === "" || parseFloat(form.quote_value) < 0) errs.push("Quote value is required.");
     if (!form.date_requested)       errs.push("Date requested is required.");
     lineItems.forEach((item, i) => {
       if (!item.brand) errs.push(`Brand is required on line ${i + 1}.`);
@@ -64,10 +67,13 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
       await onSave({
         business_name:  form.business_name,
         requested_by:   form.requested_by,
+        contact_email:  form.contact_email || null,
+        contact_phone:  form.contact_phone || null,
         quote_value:    parseFloat(form.quote_value),
         date_requested: new Date(form.date_requested).toISOString(),
         status:         form.status,
         associated_sdr: form.associated_sdr || null,
+        notes:          form.notes || null,
         line_items: lineItems
           .filter(l => l.brand)
           .map(l => ({
@@ -114,6 +120,17 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
               </div>
             </div>
 
+            <div className="form-grid form-grid-2">
+              <div className="form-field">
+                <label>Contact email</label>
+                <input type="email" value={form.contact_email} onChange={e => setField("contact_email", e.target.value)} placeholder="name@business.com" />
+              </div>
+              <div className="form-field">
+                <label>Contact phone</label>
+                <input type="tel" value={form.contact_phone} onChange={e => setField("contact_phone", e.target.value)} placeholder="(555) 555-5555" />
+              </div>
+            </div>
+
             <div className="form-grid form-grid-3">
               <div className="form-field">
                 <label>Quote value ($) <span className="form-req">*</span></label>
@@ -131,7 +148,7 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
               </div>
             </div>
 
-            <div className="form-grid form-grid-2" style={{ marginBottom: 0 }}>
+            <div className="form-grid form-grid-2">
               <div className="form-field">
                 <label>Associated SDR</label>
                 <select value={form.associated_sdr} onChange={e => setField("associated_sdr", e.target.value)}>
@@ -139,6 +156,16 @@ export default function QuoteFormModal({ quote, onClose, onSave }) {
                   {sdrOptions.map(name => <option key={name}>{name}</option>)}
                 </select>
               </div>
+            </div>
+
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label>Note</label>
+              <textarea
+                rows={3}
+                value={form.notes}
+                onChange={e => setField("notes", e.target.value)}
+                placeholder="Anything the SDR or manager wants to flag about this quote"
+              />
             </div>
 
             <div className="section-divider">
