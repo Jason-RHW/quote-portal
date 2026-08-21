@@ -54,3 +54,12 @@ def sync_requested_samples(db: Session = Depends(get_db)):
     be frozen right after the response is sent, so anything that didn't
     finish (or hit a transient HubSpot error) is retried here."""
     return sample_service.batch_sync_requested_to_hubspot(db)
+
+
+@router.get("/sync-tracking", dependencies=[Depends(verify_cron_secret)])
+def sync_tracking(db: Session = Depends(get_db)):
+    """Daily Shippo tracking check for every sample with a tracking number +
+    carrier on file and no terminal tracking status yet. Auto-advances a
+    record's status to In Transit/Delivered/Returned/Delivery issue based
+    on Shippo's real carrier status — see sample_service.STATUS_TRANSITIONS."""
+    return sample_service.sync_tracking_statuses(db)

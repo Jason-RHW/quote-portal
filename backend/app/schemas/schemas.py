@@ -451,6 +451,7 @@ class SampleRequestUpdate(BaseModel):
     state: Optional[str] = None
     zip_code: Optional[str] = None
     tracking_number: Optional[str] = None
+    carrier: Optional[str] = None
     sent_date: Optional[date] = None
     delivered_date: Optional[date] = None
     assignment_note: Optional[str] = None
@@ -465,6 +466,7 @@ class SampleRequestUpdate(BaseModel):
 class SampleRequestStatusChange(BaseModel):
     status: SampleRequestStatus
     tracking_number: Optional[str] = None
+    carrier: Optional[str] = None
     sent_date: Optional[date] = None
     delivered_date: Optional[date] = None
     changed_by: Optional[str] = None
@@ -498,6 +500,10 @@ class SampleRequestOut(BaseModel):
     zip_code: Optional[str] = None
     status: SampleRequestStatus
     tracking_number: Optional[str] = None
+    carrier: Optional[str] = None
+    tracking_status: Optional[str] = None
+    tracking_status_detail: Optional[str] = None
+    tracking_checked_at: Optional[datetime] = None
     sent_date: Optional[date] = None
     delivered_date: Optional[date] = None
     assignment_note: Optional[str] = None
@@ -522,6 +528,47 @@ class SampleRequestOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SampleMatchCandidate(SampleRequestOut):
+    """A SampleRequestOut annotated with its shipping-label match score —
+    never persisted, only used to rank candidates for the manager to pick from."""
+    match_score: float = 0
+
+
+class ShippingLabelExtractionResult(BaseModel):
+    """AI-extracted draft from an uploaded shipping label PDF — never
+    persisted directly. Paired with ranked SampleMatchCandidates so the
+    manager can review both before confirming."""
+    tracking_number: Optional[str] = None
+    carrier: Optional[str] = None
+    ship_date: Optional[str] = None
+    recipient_name: Optional[str] = None
+    business_name: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+
+
+class ShippingLabelBatchItem(BaseModel):
+    """One extracted label from a batch upload — one PDF file can yield more
+    than one of these if it's a multi-page document (one label per page)."""
+    source_file: str
+    page_index: Optional[int] = None  # None when the file only contained one label
+    extracted: ShippingLabelExtractionResult
+    candidates: List[SampleMatchCandidate]
+
+
+class ShippingLabelFileError(BaseModel):
+    source_file: str
+    error: str
+
+
+class ShippingLabelBatchResult(BaseModel):
+    labels: List[ShippingLabelBatchItem]
+    file_errors: List[ShippingLabelFileError] = []
 
 
 class SampleRequestEventOut(BaseModel):

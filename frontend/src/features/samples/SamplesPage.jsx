@@ -3,6 +3,7 @@ import { api } from "../../api/client";
 import { brandStyle } from "../../config/brandColors";
 import SampleDetailDrawer from "./SampleDetailDrawer";
 import AddSampleModal from "./AddSampleModal";
+import UploadShippingLabelModal from "./UploadShippingLabelModal";
 import SampleRecordsManagerModal from "./SampleRecordsManagerModal";
 import DateFilterCalendar from "./DateFilterCalendar";
 import ConfirmModal from "./ConfirmModal";
@@ -19,14 +20,22 @@ function AddrBadge({ req }) {
   return <span className={`addr-badge ${status}`}><span className="addr-dot" />{label}</span>;
 }
 
+const STATUS_LABELS = {
+  requested: "Requested", sent: "Sent", in_transit: "In Transit", delivered: "Delivered",
+  returned: "Returned", delivery_issue: "Delivery issue", on_hold: "On hold", rejected: "Rejected",
+};
+const STATUS_CLASSES = { on_hold: "hold", in_transit: "progress", returned: "rejected", delivery_issue: "stalled" };
+
 function StatusBadge({ status }) {
-  const label = { requested: "Requested", sent: "Sent", delivered: "Delivered", on_hold: "On hold", rejected: "Rejected" }[status] || status;
-  const klass = status === "on_hold" ? "hold" : status;
+  const label = STATUS_LABELS[status] || status;
+  const klass = STATUS_CLASSES[status] || status;
   return <span className={`status-badge ${klass}`}>{label}</span>;
 }
 
+const PRE_DELIVERY_STATUSES = new Set(["sent", "in_transit", "returned", "delivery_issue"]);
+
 function HubspotBadge({ req }) {
-  if (req.status === "sent") {
+  if (PRE_DELIVERY_STATUSES.has(req.status)) {
     return req.hubspot_sent_synced
       ? <span className="status-badge hs-tracking-synced">Tracking Synced</span>
       : <span className="status-badge hs-pending">Tracking Not Synced</span>;
@@ -133,6 +142,7 @@ export default function SamplesPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [openId, setOpenId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showUploadLabel, setShowUploadLabel] = useState(false);
   const [showManagerModal, setShowManagerModal] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [showHsConfirm, setShowHsConfirm] = useState(false);
@@ -223,7 +233,10 @@ export default function SamplesPage() {
     { value: "", label: "All statuses" },
     { value: "requested", label: "Requested" },
     { value: "sent", label: "Sent" },
+    { value: "in_transit", label: "In Transit" },
     { value: "delivered", label: "Delivered" },
+    { value: "returned", label: "Returned" },
+    { value: "delivery_issue", label: "Delivery issue" },
     { value: "on_hold", label: "On hold" },
     { value: "rejected", label: "Rejected" },
   ];
@@ -379,6 +392,7 @@ export default function SamplesPage() {
         </div>
         <div className="page-header-actions">
           <button className="btn-secondary" onClick={() => setShowManagerModal(true)}>Sample Record Management</button>
+          <button className="btn-secondary" onClick={() => setShowUploadLabel(true)}>Upload shipping label</button>
           <button className="btn-primary" onClick={() => setShowAddModal(true)}>+ Add Sample Request</button>
         </div>
       </div>
@@ -506,7 +520,7 @@ export default function SamplesPage() {
                       <td><AddrBadge req={r} /></td>
                       <td><StatusBadge status={r.status} /></td>
                       <td><HubspotBadge req={r} /></td>
-                      <td className="tracking">{r.tracking_number || "—"}</td>
+                      <td className="tracking" title={r.tracking_status_detail || ""}>{r.tracking_number || "—"}</td>
                       <td>
                         {new Date(recordDate(r) + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         <div className={`age-tag ${stale ? "stale" : ""}`}>{age === 0 ? "today" : `${age}d ago`}</div>
@@ -551,6 +565,29 @@ export default function SamplesPage() {
           brands={brands}
           onClose={() => setShowAddModal(false)}
           onCreated={() => { setShowAddModal(false); reload(); }}
+        />
+      )}
+
+      {showUploadLabel && (
+        <UploadShippingLabelModal
+          onClose={() => setShowUploadLabel(false)}
+          onApplied={({ succeeded, failed, errors }) => {
+            setShowUploadLabel(false);
+            reload();
+            if (failed) {
+              setNotice({
+                type: "warning",
+                title: "Shipping labels processed with issues",
+                message: `${succeeded} marked Sent, ${failed} failed.${errors[0] ? ` ${errors[0]}` : ""}`,
+              });
+            } else {
+              setNotice({
+                type: "success",
+                title: "Shipping labels processed",
+                message: `${succeeded} record${succeeded === 1 ? "" : "s"} marked Sent.`,
+              });
+            }
+          }}
         />
       )}
 

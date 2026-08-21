@@ -10,7 +10,7 @@ function fmtDate(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-const STEPS = ["requested", "sent", "delivered"];
+const STEPS = ["requested", "sent", "in_transit", "delivered"];
 
 function locationLine(req) {
   const cityStateZip = [
@@ -58,8 +58,14 @@ function Stepper({ status }) {
   if (status === "rejected") {
     return <div className="status-badge rejected" style={{ marginBottom: 16 }}>Rejected</div>;
   }
+  if (status === "returned") {
+    return <div className="status-badge rejected" style={{ marginBottom: 16 }}>Returned to sender</div>;
+  }
+  if (status === "delivery_issue") {
+    return <div className="status-badge stalled" style={{ marginBottom: 16 }}>Delivery issue</div>;
+  }
   const currentIdx = STEPS.indexOf(status);
-  const labels = { requested: "Requested", sent: "Sent", delivered: "Delivered" };
+  const labels = { requested: "Requested", sent: "Sent", in_transit: "In Transit", delivered: "Delivered" };
   return (
     <div className="stepper">
       {STEPS.map((s, i) => (
@@ -89,6 +95,7 @@ export default function SampleDetailDrawer({ requestId, brands, sdrsById, onClos
   const [deleting, setDeleting] = useState(false);
 
   const [sentTracking, setSentTracking] = useState("");
+  const [sentCarrier, setSentCarrier] = useState("");
   const [sentDate, setSentDate] = useState("");
   const [deliveredTracking, setDeliveredTracking] = useState("");
   const [deliveredSentDate, setDeliveredSentDate] = useState("");
@@ -175,6 +182,7 @@ export default function SampleDetailDrawer({ requestId, brands, sdrsById, onClos
     if (!req || newStatus === req.status) return;
     if (newStatus === "sent") {
       setSentTracking(req.tracking_number || "");
+      setSentCarrier(req.carrier || "");
       setSentDate(req.sent_date || "");
       setShowSentModal(true);
       return;
@@ -209,7 +217,7 @@ export default function SampleDetailDrawer({ requestId, brands, sdrsById, onClos
       alert("Tracking number and sent date are both required to mark this as Sent.");
       return;
     }
-    await applyStatus({ status: "sent", tracking_number: sentTracking.trim(), sent_date: sentDate });
+    await applyStatus({ status: "sent", tracking_number: sentTracking.trim(), carrier: sentCarrier.trim() || null, sent_date: sentDate });
     setShowSentModal(false);
   }
 
@@ -381,10 +389,18 @@ export default function SampleDetailDrawer({ requestId, brands, sdrsById, onClos
               <select value={req.status} onChange={e => handleStatusSelect(e.target.value)}>
                 <option value="requested">Requested</option>
                 <option value="sent">Sent</option>
+                {req.status === "in_transit" && <option value="in_transit" disabled>In Transit</option>}
                 <option value="delivered">Delivered</option>
+                {req.status === "returned" && <option value="returned" disabled>Returned</option>}
+                {req.status === "delivery_issue" && <option value="delivery_issue" disabled>Delivery issue</option>}
                 <option value="on_hold">On hold</option>
                 <option value="rejected">Rejected</option>
               </select>
+              {["in_transit", "returned", "delivery_issue"].includes(req.status) && (
+                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  Set automatically by the daily tracking check.
+                </p>
+              )}
             </div>
             {req.tracking_number && <div className="drawer-field-value">Tracking #: {req.tracking_number}</div>}
             {req.sent_date && <div className="drawer-field-value">Sent: {fmtDate(req.sent_date)}</div>}
@@ -426,6 +442,13 @@ export default function SampleDetailDrawer({ requestId, brands, sdrsById, onClos
               <div className="form-field" style={{ marginBottom: 12 }}>
                 <label>Tracking number *</label>
                 <input value={sentTracking} onChange={e => setSentTracking(e.target.value)} placeholder="e.g. 1Z884A12F31" />
+              </div>
+              <div className="form-field" style={{ marginBottom: 12 }}>
+                <label>Carrier</label>
+                <input value={sentCarrier} onChange={e => setSentCarrier(e.target.value)} placeholder="usps, ups, fedex…" />
+                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  Enables automatic daily tracking until delivered.
+                </p>
               </div>
               <div className="form-field">
                 <label>Sent date *</label>

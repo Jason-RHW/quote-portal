@@ -192,7 +192,10 @@ class SdrDailyStat(Base):
 class SampleRequestStatus(str, enum.Enum):
     requested = "requested"
     sent = "sent"
+    in_transit = "in_transit"        # set only by the daily Shippo cron — see sample_service.sync_tracking_statuses
     delivered = "delivered"
+    returned = "returned"            # set only by the daily Shippo cron
+    delivery_issue = "delivery_issue"  # set only by the daily Shippo cron
     on_hold = "on_hold"
     rejected = "rejected"
 
@@ -246,11 +249,21 @@ class SampleRequest(Base):
     state = Column(String, nullable=True)
     zip_code = Column(String, nullable=True)
 
-    status = Column(SAEnum(SampleRequestStatus), nullable=False, default=SampleRequestStatus.requested)
+    status = Column(SAEnum(SampleRequestStatus, native_enum=False, length=20), nullable=False, default=SampleRequestStatus.requested)
     tracking_number = Column(String, nullable=True)
     sent_date = Column(Date, nullable=True)
     delivered_date = Column(Date, nullable=True)
     assignment_note = Column(String, nullable=True)
+
+    # Shippo carrier tracking (see shippo_service.py + cron.py's /sync-tracking) —
+    # carrier is the missing piece tracking_number alone can't provide, since
+    # Shippo's lookup needs both. tracking_status/detail mirror Shippo's own
+    # vocabulary (PRE_TRANSIT/TRANSIT/DELIVERED/RETURNED/FAILURE/UNKNOWN) so no
+    # translation layer is needed between what the cron job stores and what it reads.
+    carrier = Column(String, nullable=True)
+    tracking_status = Column(String, nullable=True)
+    tracking_status_detail = Column(String, nullable=True)
+    tracking_checked_at = Column(DateTime, nullable=True)
 
     custom_fields = Column(JSON, nullable=False, default=dict)  # Form Builder field answers
 

@@ -26,6 +26,7 @@ from app.database import SessionLocal
 from app.services import address_verification_service as verify_svc
 from app.services import email_service
 from app.services import hubspot_service
+from app.services import shippo_service
 
 
 def gen_id() -> str:
@@ -133,6 +134,86 @@ def _product_sent_for(db: Session, req: SampleRequest) -> str:
 def _clear_hubspot_sync_flags(req: SampleRequest):
     req.hubspot_sent_synced = False
     req.hubspot_delivered_synced = False
+
+
+# ── Shipping label matching ──
+#
+# Deterministic scoring, not AI — the AI extraction step already did the
+# hard part (reading the PDF); matching it to an existing record is a
+# simple normalized-name + address comparison, kept auditable and cheap.
+# Nothing here writes to the DB — the manager still has to pick a candidate
+# and confirm via the existing change_status() flow below.
+
+def _tokens(text: Optional[str]) -> set:
+    return set(hubspot_service._normalize_company_name(text).split())
+
+
+def _score_shipping_label_candidate(extracted: dict, req: SampleRequest) -> float:
+    # Identity signals (name/recipient/zip) are what make a match real — address
+    # word overlap alone is noise (e.g. "St" matching "St" on unrelated streets),
+    # so it only counts as a tiebreaker on top of at least one identity signal.
+    identity_score = 0.0
+
+    name_tokens = _tokens(extracted.get("business_name"))
+    req_name_tokens = _tokens(req.business_name)
+    if name_tokens and req_name_tokens:
+        overlap = len(name_tokens & req_name_tokens) / len(name_tokens | req_name_tokens)
+        identity_score += overlap * 70
+
+    recipient_tokens = _tokens(extracted.get("recipient_name"))
+    contact_tokens = _tokens(req.contact_name)
+    if recipient_tokens and contact_tokens and (recipient_tokens & contact_tokens):
+        identity_score += 15
+
+    extracted_zip = (extracted.get("zip_code") or "").strip()[:5]
+    req_zip = (req.zip_code or "").strip()[:5]
+    if extracted_zip and req_zip and extracted_zip == req_zip:
+        identity_score += 10
+
+    if identity_score <= 0:
+        return 0.0
+
+    score = identity_score
+    addr_tokens = _tokens(extracted.get("address_line1"))
+    req_addr_tokens = _tokens(req.address_line)
+    if addr_tokens and req_addr_tokens and (addr_tokens & req_addr_tokens):
+        score += 5
+
+    # Tie-breaker for a business with multiple historical sample records —
+    # the one requested closest to when the label was actually shipped is
+    # more likely the one this label belongs to. Only ever a tie-breaker:
+    # it's added on top of the identity gate above, so an unrelated business
+    # can't win just by having a closer date.
+    ship_date_str = extracted.get("ship_date")
+    if ship_date_str and req.requested_date:
+        try:
+            ship_date = date.fromisoformat(ship_date_str)
+            days_apart = abs((ship_date - req.requested_date).days)
+            score += max(0.0, 15.0 * (1 - days_apart / 60))
+        except ValueError:
+            pass
+
+    return round(score, 1)
+
+
+def match_shipping_label(db: Session, extracted: dict, limit: int = 1) -> List[SampleRequest]:
+    candidates = (
+        db.query(SampleRequest)
+        .filter(SampleRequest.archived_at.is_(None))
+        .all()
+    )
+    scored = []
+    for req in candidates:
+        score = _score_shipping_label_candidate(extracted, req)
+        if score <= 0:
+            continue
+        req.brand_ids = _brand_ids_for(db, req.id)
+        _normalize_request_ids(req)
+        req.match_score = score
+        scored.append(req)
+
+    scored.sort(key=lambda r: r.match_score, reverse=True)
+    return scored[:limit]
 
 
 def _run_verification_best_effort(db: Session, req: SampleRequest):
@@ -394,6 +475,7 @@ def change_status(db: Session, request_id: str, data: SampleRequestStatusChange)
             raise StatusChangeError("Tracking number and sent date are both required to mark this as Sent.")
         req.tracking_number = tracking
         req.sent_date = sent_date
+        req.carrier = data.carrier or req.carrier
         req.hubspot_sent_synced = False
 
     elif target == SampleRequestStatus.delivered:
@@ -420,6 +502,96 @@ def change_status(db: Session, request_id: str, data: SampleRequestStatusChange)
     db.refresh(req)
     req.brand_ids = _brand_ids_for(db, req.id)
     return _normalize_request_ids(req)
+
+
+# ── Shippo tracking sync — daily cron job (see cron.py's /sync-tracking) ──
+#
+# Read-only per-record lookups, not webhooks (Shippo's webhook flow needs a
+# live key, so it can't be tested with a test key locally — see
+# shippo_service.py). Terminal Shippo statuses (delivered/returned/failure)
+# stop a record from being picked up on future runs.
+
+TERMINAL_TRACKING_STATUSES = {"DELIVERED", "RETURNED", "FAILURE"}
+
+# Shippo status -> the record's real workflow status. Written directly (not
+# through change_status()/SampleRequestStatusChange) since these three have
+# no manual entry point at all — only the cron ever sets them. DELIVERED is
+# handled separately below since it stays reachable manually too and keeps
+# its own gate via change_status().
+STATUS_TRANSITIONS = {
+    "TRANSIT": SampleRequestStatus.in_transit,
+    "RETURNED": SampleRequestStatus.returned,
+    "FAILURE": SampleRequestStatus.delivery_issue,
+}
+
+
+def sync_tracking_statuses(db: Session) -> dict:
+    rows = (
+        db.query(SampleRequest)
+        .filter(
+            SampleRequest.archived_at.is_(None),
+            SampleRequest.tracking_number.isnot(None),
+            SampleRequest.carrier.isnot(None),
+        )
+        .all()
+    )
+    rows = [r for r in rows if r.tracking_status not in TERMINAL_TRACKING_STATUSES]
+
+    checked = 0
+    delivered = 0
+    in_transit_count = 0
+    abnormal = 0
+    failed = 0
+
+    for req in rows:
+        try:
+            data = shippo_service.get_tracking_status(req.carrier, req.tracking_number)
+            status, status_details, status_date = shippo_service.parse_status(data)
+        except shippo_service.ShippoTrackingError:
+            failed += 1
+            continue
+
+        if not status:
+            continue
+
+        checked += 1
+        req.tracking_status = status
+        req.tracking_status_detail = status_details
+        req.tracking_checked_at = datetime.now(timezone.utc)
+        db.commit()
+
+        if status == "DELIVERED":
+            delivered_date = None
+            if status_date:
+                try:
+                    delivered_date = datetime.fromisoformat(status_date.replace("Z", "+00:00")).date()
+                except ValueError:
+                    delivered_date = None
+            change_status(db, req.id, SampleRequestStatusChange(
+                status=SampleRequestStatus.delivered,
+                delivered_date=delivered_date or date.today(),
+                changed_by="shippo-cron",
+            ))
+            delivered += 1
+        elif status in STATUS_TRANSITIONS:
+            new_status = STATUS_TRANSITIONS[status]
+            if req.status != new_status:
+                prev = req.status.value if req.status else None
+                req.status = new_status
+                req.updated_at = datetime.now(timezone.utc)
+                _log_event(db, req.id, prev, new_status.value, changed_by="shippo-cron")
+                db.commit()
+            if new_status == SampleRequestStatus.in_transit:
+                in_transit_count += 1
+            else:
+                abnormal += 1
+        # PRE_TRANSIT / UNKNOWN: tracking fields already updated above, no
+        # status change — stays at Sent until something further along comes in.
+
+    return {
+        "checked": checked, "delivered": delivered, "in_transit": in_transit_count,
+        "abnormal": abnormal, "failed": failed, "total_candidates": len(rows),
+    }
 
 
 # ── Batch actions ──

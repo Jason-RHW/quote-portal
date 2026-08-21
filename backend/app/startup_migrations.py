@@ -69,6 +69,27 @@ def run(engine: Engine) -> None:
         "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'received'",
     )
 
+    _add_column_if_missing(
+        engine, "sample_requests", "carrier",
+        "ALTER TABLE sample_requests ADD COLUMN carrier VARCHAR",
+        "ALTER TABLE sample_requests ADD COLUMN IF NOT EXISTS carrier VARCHAR",
+    )
+    _add_column_if_missing(
+        engine, "sample_requests", "tracking_status",
+        "ALTER TABLE sample_requests ADD COLUMN tracking_status VARCHAR",
+        "ALTER TABLE sample_requests ADD COLUMN IF NOT EXISTS tracking_status VARCHAR",
+    )
+    _add_column_if_missing(
+        engine, "sample_requests", "tracking_status_detail",
+        "ALTER TABLE sample_requests ADD COLUMN tracking_status_detail VARCHAR",
+        "ALTER TABLE sample_requests ADD COLUMN IF NOT EXISTS tracking_status_detail VARCHAR",
+    )
+    _add_column_if_missing(
+        engine, "sample_requests", "tracking_checked_at",
+        "ALTER TABLE sample_requests ADD COLUMN tracking_checked_at TIMESTAMP",
+        "ALTER TABLE sample_requests ADD COLUMN IF NOT EXISTS tracking_checked_at TIMESTAMP",
+    )
+
     if not is_sqlite:
         # quotes.status was created as a native Postgres ENUM type by
         # SQLAlchemy's default (native_enum=True) before this file existed.
@@ -80,3 +101,8 @@ def run(engine: Engine) -> None:
         # matching the SAEnum(native_enum=False) now used in the model.
         # Safe to re-run: a no-op once the column is already text.
         _run(engine, "ALTER TABLE quotes ALTER COLUMN status TYPE VARCHAR(20) USING status::text")
+
+        # Same fix, same reason — sample_requests.status was also a native
+        # Postgres ENUM (native_enum defaulted True) before the in_transit/
+        # returned/delivery_issue values were added for Shippo tracking.
+        _run(engine, "ALTER TABLE sample_requests ALTER COLUMN status TYPE VARCHAR(20) USING status::text")

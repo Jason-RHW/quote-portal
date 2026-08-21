@@ -55,6 +55,30 @@ async function uploadFile(path, file) {
   return res.json();
 }
 
+async function uploadFiles(path, files) {
+  const token = getToken();
+  const formData = new FormData();
+  for (const f of files) formData.append("files", f);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+  if (res.status === 401) {
+    localStorage.removeItem("portal_token");
+    localStorage.removeItem("portal_token_expiry");
+    window.location.reload();
+    return;
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${path} failed (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
 async function downloadFile(path, filename) {
   const token = getToken();
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -147,6 +171,7 @@ export const api = {
     batchHubspotSync: (ids, changedBy)     => request("/samples/batch/hubspot-sync", { method: "POST", body: JSON.stringify({ ids, changed_by: changedBy }) }),
     batchVerifyAddresses: (ids, changedBy) => request("/samples/batch/address-verification", { method: "POST", body: JSON.stringify({ ids, changed_by: changedBy }) }),
     verifyAddress: (id)     => request(`/samples/${id}/verify-address`, { method: "POST" }),
+    extractShippingLabels: (files) => uploadFiles("/samples/extract-shipping-labels", files),
   },
   brands: {
     list:   (includeInactive = true) => request(`/brands?include_inactive=${includeInactive}`),

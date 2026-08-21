@@ -1,17 +1,18 @@
 from typing import Optional, List
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import verify_token, verify_sdr_token, check_sdr_code, create_sdr_token
-from app.services import sample_service, quote_service
+from app.services import sample_service, quote_service, shipping_label_extraction_service
 from app.schemas.schemas import (
     SampleRequestCreate, SampleRequestUpdate, SampleRequestSubmit, SampleRequestOut,
     SampleRequestStatusChange, BatchStatusChange, BatchArchive, AddressVerifyConfirm,
     BrandCreate, BrandUpdate, BrandOut, SdrCreate, SdrUpdate, SdrOut,
     FormFieldCreate, FormFieldUpdate, FormFieldOut,
     SampleRequestEventOut, QuoteRequestSubmit, QuoteOut,
+    ShippingLabelBatchResult, ShippingLabelBatchItem, ShippingLabelFileError,
 )
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -20,6 +21,9 @@ from app.schemas.schemas import (
 # the other routers, so no per-route auth wiring needed here.
 # ─────────────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/api/samples", tags=["samples"])
+
+MAX_PDF_BYTES = 10 * 1024 * 1024  # 10MB
+MAX_LABEL_FILES = 20
 
 
 @router.get("", response_model=List[SampleRequestOut])
@@ -56,6 +60,49 @@ def update_sample(request_id: str, data: SampleRequestUpdate, db: Session = Depe
     if not req:
         raise HTTPException(status_code=404, detail="Sample request not found")
     return req
+
+
+@router.post("/extract-shipping-labels", response_model=ShippingLabelBatchResult)
+async def extract_shipping_labels(files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """Reads one or more uploaded shipping-label PDFs — each file may itself
+    contain multiple labels (one per page, e.g. a batch label-printing run)
+    — AI-extracts tracking/ship/address info for every label found, and
+    ranks existing SampleRequests as candidate matches for each. Never
+    writes to the DB. A manager still has to pick a candidate per label and
+    confirm via the existing /{request_id}/status endpoint (which never
+    touches HubSpot). One bad file doesn't block the rest of the batch."""
+    if len(files) > MAX_LABEL_FILES:
+        raise HTTPException(status_code=413, detail=f"Too many files (max {MAX_LABEL_FILES} at once).")
+
+    labels: List[ShippingLabelBatchItem] = []
+    file_errors: List[ShippingLabelFileError] = []
+
+    for file in files:
+        source = file.filename or "shipping_label.pdf"
+        if file.content_type != "application/pdf":
+            file_errors.append(ShippingLabelFileError(source_file=source, error="Not a PDF file."))
+            continue
+        contents = await file.read()
+        if len(contents) > MAX_PDF_BYTES:
+            file_errors.append(ShippingLabelFileError(source_file=source, error="PDF is too large (10MB max)."))
+            continue
+        try:
+            extracted_labels = shipping_label_extraction_service.extract_shipping_labels(contents, filename=source)
+        except shipping_label_extraction_service.ExtractionError as e:
+            file_errors.append(ShippingLabelFileError(source_file=source, error=str(e)))
+            continue
+
+        multi = len(extracted_labels) > 1
+        for i, extracted in enumerate(extracted_labels):
+            candidates = sample_service.match_shipping_label(db, extracted)
+            labels.append(ShippingLabelBatchItem(
+                source_file=source,
+                page_index=i if multi else None,
+                extracted=extracted,
+                candidates=candidates,
+            ))
+
+    return ShippingLabelBatchResult(labels=labels, file_errors=file_errors)
 
 
 @router.post("/{request_id}/status", response_model=SampleRequestOut)
