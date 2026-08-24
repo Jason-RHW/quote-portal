@@ -106,3 +106,14 @@ def run(engine: Engine) -> None:
         # Postgres ENUM (native_enum defaulted True) before the in_transit/
         # returned/delivery_issue values were added for Shippo tracking.
         _run(engine, "ALTER TABLE sample_requests ALTER COLUMN status TYPE VARCHAR(20) USING status::text")
+
+        # sample_request_events.from_status/to_status were ALSO pinned to
+        # that same native enum in production (the original hand-written
+        # schema — see the module docstring above sample_management-schema.sql
+        # — used the enum here even though the Python model always declared
+        # these as plain String). Invisible until _log_event() tried to write
+        # a value outside the original 5 statuses (in_transit/returned/
+        # delivery_issue), which crashed every Shippo-driven status change
+        # with `invalid input value for enum sample_request_status`.
+        _run(engine, "ALTER TABLE sample_request_events ALTER COLUMN from_status TYPE VARCHAR(20) USING from_status::text")
+        _run(engine, "ALTER TABLE sample_request_events ALTER COLUMN to_status TYPE VARCHAR(20) USING to_status::text")
