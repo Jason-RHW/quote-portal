@@ -584,3 +584,45 @@ class SampleRequestEventOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# SDR Form Fills — HubSpot Note-derived "form fills" (see
+# hubspot_formfill_ingest_service.py) plus manual entries, feeding the
+# Form Fills page and SDR commission calculation ($5 flat per fill).
+# ─────────────────────────────────────────────────────────────────────────
+
+class FormFillOut(BaseModel):
+    id: str
+    sdr_id: Optional[str] = None
+    company_name: Optional[str] = None
+    company_domain: Optional[str] = None
+    hubspot_company_id: Optional[str] = None
+    note_text: Optional[str] = None
+    fill_date: date
+    source: str
+    hubspot_note_ids: Optional[List[str]] = None
+    hubspot_creator_user_id: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    _stringify_ids = field_validator("id", "sdr_id", mode="before")(stringify_uuid)
+
+    class Config:
+        from_attributes = True
+
+
+class FormFillCreate(BaseModel):
+    sdr_id: Optional[str] = None
+    company_name: str
+    note_text: Optional[str] = None
+    fill_date: date
+    created_by: Optional[str] = None
+
+
+class FormFillUpdate(BaseModel):
+    sdr_id: Optional[str] = None
+    company_name: Optional[str] = None
+    note_text: Optional[str] = None
+    fill_date: Optional[date] = None

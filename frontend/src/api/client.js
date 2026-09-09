@@ -189,4 +189,14 @@ export const api = {
     update: (id, data) => request(`/form-fields/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id)        => request(`/form-fields/${id}`, { method: "DELETE" }),
   },
+  formFills: {
+    list: (params = {}) => {
+      const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ""));
+      const s = qs.toString();
+      return request(`/form-fills${s ? `?${s}` : ""}`);
+    },
+    create: (data)     => request("/form-fills", { method: "POST", body: JSON.stringify(data) }),
+    update: (id, data) => request(`/form-fills/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id)        => request(`/form-fills/${id}`, { method: "DELETE" }),
+  },
 };

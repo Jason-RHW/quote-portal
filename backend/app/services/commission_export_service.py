@@ -23,7 +23,10 @@ from app.models.db_models import Quote
 from app.services import spiff_service
 
 SAMPLE_BASE_RATE = 1.0
-QUOTE_BASE_RATE = 3.0
+# Current rate (see spiff_service.QUOTE_RATE / RATE_CHANGE_DATE) — the sheet's
+# formulas assume one flat quote rate per export, so a month straddling the
+# 2026-08-25 rate change won't split perfectly the way the live dashboard does.
+QUOTE_BASE_RATE = spiff_service.QUOTE_RATE
 MEETING_BASE_RATE = 3.0
 
 HEADER_FILL = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")

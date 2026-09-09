@@ -52,18 +52,28 @@ function bonusBreakdown(details = [], total = 0) {
 }
 
 function recordFormula(records = []) {
-  const baseCount = records.filter(record => !record.spiff_applied).length;
-  const spiffGroups = records
-    .filter(record => record.spiff_applied)
-    .reduce((acc, record) => {
-      const amount = Number(record.amount || 0);
-      acc[amount] = (acc[amount] || 0) + 1;
-      return acc;
-    }, {});
+  // Groups by (isSpiff, amount) rather than a single flat rate — the $/record
+  // isn't constant across a period any more (the SDR pay rate changed on
+  // 2026-08-25), so a mixed-rate period needs one "$X x N" term per rate
+  // actually present, not one hardcoded rate for every record.
+  const groups = new Map();
+  records.forEach(record => {
+    const amount = Number(record.amount || 0);
+    const isSpiff = !!record.spiff_applied;
+    const key = `${isSpiff}:${amount}`;
+    if (!groups.has(key)) groups.set(key, { amount, isSpiff, count: 0 });
+    groups.get(key).count += 1;
+  });
+  const all = [...groups.values()];
   return {
-    baseCount,
-    spiffParts: Object.entries(spiffGroups).map(([amount, count]) => ({ amount: Number(amount), count })),
+    baseParts: all.filter(g => !g.isSpiff),
+    spiffParts: all.filter(g => g.isSpiff),
   };
+}
+
+function formulaText(parts) {
+  if (!parts.length) return "$0";
+  return parts.map(p => `${money(p.amount)} x ${p.count}`).join(" + ");
 }
 
 function ruleLabel(rule) {
@@ -657,7 +667,7 @@ export default function SpiffMockPage() {
       <div className="page-header">
         <div>
           <p className="page-title">SDR Commission Dashboard</p>
-          <p className="page-sub">Base: $1/Sample, $3/Quote</p>
+          <p className="page-sub">Base: $1/Sample · $40/Quote · $1/Form Fill (before 8/25/26: $3/Quote, $5/Form Fill)</p>
         </div>
         <div className="page-header-actions">
           <MonthPicker value={month} onChange={setMonth} />
@@ -712,6 +722,7 @@ export default function SpiffMockPage() {
                   <th>SDR</th>
                   <th>Samples</th>
                   <th>Quotes</th>
+                  <th>Form Fills</th>
                   <th>Commission</th>
                   <th>Details</th>
                 </tr>
@@ -722,6 +733,7 @@ export default function SpiffMockPage() {
                     <td className="col-name">{row.sdr_name}</td>
                     <td>{row.eligible_sample_count || 0}</td>
                     <td>{row.eligible_quote_count || 0}</td>
+                    <td>{row.eligible_form_fill_count || 0}</td>
                     <td><CommissionAmount row={row} setHoverReason={setHoverReason} /></td>
                     <td>
                       <button className="row-action-btn" onClick={() => { setDetailRow(row); setDetailTab("samples"); }}>View list</button>
@@ -806,7 +818,7 @@ export default function SpiffMockPage() {
               <div>
                 <p className="modal-title">{detailRow.sdr_name}</p>
                 <p className="modal-subtitle">
-                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Meetings {money(detailRow.meeting_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Bonus {money(detailRow.spiff_payout || 0)}
+                  Samples {money(detailRow.sample_payout || 0)} · Quotes {money(detailRow.quote_payout || 0)} · Meetings {money(detailRow.meeting_payout || 0)} · Form Fills {money(detailRow.form_fill_payout || 0)} · Deal {money(detailRow.deal_payout || 0)} · Bonus {money(detailRow.spiff_payout || 0)}
                 </p>
               </div>
               <button className="modal-close" onClick={() => setDetailRow(null)}>x</button>
@@ -820,6 +832,9 @@ export default function SpiffMockPage() {
               </button>
               <button className={detailTab === "meetings" ? "active" : ""} onClick={() => setDetailTab("meetings")}>
                 Meetings <span>{money(detailRow.meeting_payout || 0)}</span>
+              </button>
+              <button className={detailTab === "formfills" ? "active" : ""} onClick={() => setDetailTab("formfills")}>
+                Form Fills <span>{money(detailRow.form_fill_payout || 0)}</span>
               </button>
               <button className={detailTab === "deals" ? "active" : ""} onClick={() => setDetailTab("deals")}>
                 Deal Commission <span>{money(detailRow.deal_payout || 0)}</span>
@@ -841,6 +856,9 @@ export default function SpiffMockPage() {
                   onAdd={openAddMeeting}
                   onDelete={row => setDeleteMeetingCandidate(row)}
                 />
+              )}
+              {detailTab === "formfills" && (
+                <RecordGroups title="Form Fills" rows={detailRow.form_fills || []} total={detailRow.form_fill_payout || 0} />
               )}
               {detailTab === "deals" && (
                 <DealCommissionSection
@@ -1286,7 +1304,7 @@ function ReasonCard({ data }) {
       <div className="spiff-reason-title">Calculation</div>
       <div>
         <span className="sample-chip">Samples</span>
-        <span> = $1 x {sampleFormula.baseCount}</span>
+        <span> = {formulaText(sampleFormula.baseParts)}</span>
         {sampleFormula.spiffParts.map(part => (
           <span key={part.amount}> + <span className="spiff-dollar">SPIFF {money(part.amount)} x {part.count}</span></span>
         ))}
@@ -1295,7 +1313,7 @@ function ReasonCard({ data }) {
       </div>
       <div>
         <span className="quote-chip">Quotes</span>
-        <span> = $3 x {quoteFormula.baseCount}</span>
+        <span> = {formulaText(quoteFormula.baseParts)}</span>
         {quoteFormula.spiffParts.map(part => (
           <span key={part.amount}> + <span className="spiff-dollar">SPIFF {money(part.amount)} x {part.count}</span></span>
         ))}
@@ -1309,6 +1327,14 @@ function ReasonCard({ data }) {
           <span className="quote-dollar">{money(row.deal_payout || 0)}</span>
         </div>
       )}
+      {(row.form_fill_payout || 0) > 0 && (
+        <div>
+          <span className="quote-chip">Form Fills</span>
+          <span> = {formulaText(recordFormula(row.form_fills).baseParts)}</span>
+          <span> = </span>
+          <span className="quote-dollar">{money(row.form_fill_payout || 0)}</span>
+        </div>
+      )}
       {(row.spiff_payout || 0) > 0 && (
         <div>
           <span className="spiff-chip">Overall SPIFF</span>
@@ -1320,12 +1346,16 @@ function ReasonCard({ data }) {
   );
 }
 
-function groupRecordRows(rows, title) {
+function groupRecordRows(rows) {
   const groups = new Map();
   rows.forEach(row => {
+    // Label from the record's own amount, not a hardcoded rate — samples/
+    // quotes/form fills all pay differently depending on when the record
+    // falls relative to the 2026-08-25 rate change, so a single fixed
+    // "$3/quote"-style label would be wrong for part of any mixed period.
     const campaigns = row.spiff_campaigns?.length
       ? row.spiff_campaigns.map(campaign => ruleGroupTitle(campaign.name || "SPIFF Rule", campaign))
-      : [row.spiff_applied ? "SPIFF adjusted records" : `Base Commission · ${title === "Quotes" ? "$3/quote" : "$1/sample"}`];
+      : [row.spiff_applied ? "SPIFF adjusted records" : `Base Commission · ${money(row.base_amount ?? row.amount ?? 0)} each`];
     campaigns.forEach(name => {
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name).push(row);
@@ -1351,7 +1381,7 @@ function stripDateFromRuleName(name = "") {
 }
 
 function RecordGroups({ title, rows, total }) {
-  const groups = groupRecordRows(rows, title);
+  const groups = groupRecordRows(rows);
   return (
     <section className="spiff-record-section">
       <div className="spiff-section-heading">

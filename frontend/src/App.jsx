@@ -9,6 +9,7 @@ import SdrPerformancePage from "./features/sdr-performance/SdrPerformancePage";
 import SpiffMockPage from "./features/spiff/SpiffMockPage";
 import SamplesPage from "./features/samples/SamplesPage";
 import SettingsPage from "./features/samples/SettingsPage";
+import FormFillsPage from "./features/formfills/FormFillsPage";
 import "./App.css";
 
 const NAV = [
@@ -21,7 +22,7 @@ const NAV = [
   { key: "sdr-performance", label: "SDR Performance", icon: <PulseIcon /> },
   { key: "spiff", label: "SDR Commission", icon: <CalculatorIcon /> },
 ];
-const INTERNAL_SCROLL_TABS = new Set(["quotes", "pos", "accounts", "samples", "spiff"]);
+const INTERNAL_SCROLL_TABS = new Set(["quotes", "pos", "accounts", "samples", "spiff", "form-fills"]);
 
 export default function App() {
   const { authenticated, logout, ready } = useAuth();
@@ -59,6 +60,9 @@ export default function App() {
           <button className={`sidebar-item ${tab==="samples"?"active":""}`} onClick={() => showTab("samples")}>
             <BoxIcon />Samples
           </button>
+          <button className={`sidebar-item ${tab==="form-fills"?"active":""}`} onClick={() => showTab("form-fills")}>
+            <ClipboardIcon />Form Fills
+          </button>
           <div className="sidebar-group-label">Analytics</div>
           <button className={`sidebar-item ${tab==="dashboard"?"active":""}`} onClick={() => showTab("dashboard")}>
             <ChartIcon />Dashboard
@@ -81,6 +85,7 @@ export default function App() {
           {visitedTabs.includes("pos") && <PageSlot active={tab === "pos"} internalScroll><POsPage /></PageSlot>}
           {visitedTabs.includes("accounts") && <PageSlot active={tab === "accounts"} internalScroll><AccountsPage /></PageSlot>}
           {visitedTabs.includes("samples") && <PageSlot active={tab === "samples"} internalScroll><SamplesPage /></PageSlot>}
+          {visitedTabs.includes("form-fills") && <PageSlot active={tab === "form-fills"} internalScroll><FormFillsPage /></PageSlot>}
           {visitedTabs.includes("sample-settings") && <PageSlot active={tab === "sample-settings"}><SettingsPage /></PageSlot>}
           {visitedTabs.includes("dashboard") && <PageSlot active={tab === "dashboard"}><DashboardPage /></PageSlot>}
           {visitedTabs.includes("sdr-performance") && <PageSlot active={tab === "sdr-performance"}><SdrPerformancePage /></PageSlot>}
@@ -101,6 +106,10 @@ function GearIcon() {
 
 function BoxIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>;
+}
+
+function ClipboardIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>;
 }
 
 function FileInvoiceIcon() {

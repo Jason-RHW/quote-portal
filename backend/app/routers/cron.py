@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services import sdr_kpi_ingest_service
 from app.services import sample_service
+from app.services import hubspot_formfill_ingest_service
 
 router = APIRouter(prefix="/api/cron", tags=["cron"])
 PST = ZoneInfo("America/Los_Angeles")
@@ -63,3 +64,15 @@ def sync_tracking(db: Session = Depends(get_db)):
     record's status to In Transit/Delivered/Returned/Delivery issue based
     on Shippo's real carrier status — see sample_service.STATUS_TRANSITIONS."""
     return sample_service.sync_tracking_statuses(db)
+
+
+@router.get("/ingest-hubspot-formfills", dependencies=[Depends(verify_cron_secret)])
+def ingest_hubspot_formfills(target_date: str = None, db: Session = Depends(get_db)):
+    """Daily sync of SDR 'form fill' notes from HubSpot — see
+    hubspot_formfill_ingest_service.ingest_day for the qualification logic
+    (note created today AND its company's last activity also today)."""
+    if target_date:
+        d = date.fromisoformat(target_date)
+    else:
+        d = (datetime.now(PST) - timedelta(days=1)).date()
+    return hubspot_formfill_ingest_service.ingest_day(db, d)

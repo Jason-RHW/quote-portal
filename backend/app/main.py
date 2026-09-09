@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
 from app.auth import verify_token
-from app.routers import quotes, pos, accounts, dashboard, sdr_performance, cron, samples, spiff
+from app.routers import quotes, pos, accounts, dashboard, sdr_performance, cron, samples, spiff, form_fills
 from app.routers import auth as auth_router
 from app import startup_migrations
 
@@ -40,6 +40,7 @@ app.include_router(accounts.router,  dependencies=[Depends(verify_token)])
 app.include_router(dashboard.router, dependencies=[Depends(verify_token)])
 app.include_router(sdr_performance.router, dependencies=[Depends(verify_token)])
 app.include_router(spiff.router, dependencies=[Depends(verify_token)])
+app.include_router(form_fills.router, dependencies=[Depends(verify_token)])
 app.include_router(cron.router)  # own auth (CRON_SECRET) — deliberately not verify_token
 
 # Sample Portal — admin routes share the existing admin JWT (same login as

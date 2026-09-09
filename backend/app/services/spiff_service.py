@@ -16,8 +16,27 @@ from app.models.db_models import (
     SampleRequest,
     Sdr,
     SdrDailyStat,
+    SdrFormFill,
     gen_id,
 )
+
+FORM_FILL_RATE = 1.0  # current rate — see _form_fill_rate_for for the date-based rule
+QUOTE_RATE = 40.0  # current rate — see _quote_rate_for for the date-based rule
+
+# Rate change effective 2026-08-25: quotes went from $3 to $40, form fills
+# from $5 to $1. Records dated before this stay at the old rate so past
+# commission periods don't get silently recalculated.
+RATE_CHANGE_DATE = date(2026, 8, 25)
+LEGACY_QUOTE_RATE = 3.0
+LEGACY_FORM_FILL_RATE = 5.0
+
+
+def _quote_rate_for(d: Optional[date]) -> float:
+    return QUOTE_RATE if d and d >= RATE_CHANGE_DATE else LEGACY_QUOTE_RATE
+
+
+def _form_fill_rate_for(d: Optional[date]) -> float:
+    return FORM_FILL_RATE if d and d >= RATE_CHANGE_DATE else LEGACY_FORM_FILL_RATE
 
 
 EXCLUDED_COMMISSION_SDRS = {"Jason Rui", "Henry Park", "Angel Sun"}
@@ -589,6 +608,39 @@ def delete_meeting(db: Session, meeting_id: str) -> bool:
     return True
 
 
+def _form_fill_payload(row: SdrFormFill) -> Dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "business_name": row.company_name,
+        "date": row.fill_date.isoformat() if row.fill_date else None,
+        "source": row.source,
+        "amount": round(_form_fill_rate_for(row.fill_date), 2),
+    }
+
+
+def _eligible_form_fills(db: Session, start: date, end: date) -> Dict[str, List[SdrFormFill]]:
+    """Grouped by SDR full name — see _eligible_deals for why sdr.id is
+    str()-normalized on both sides before comparing/hashing. Rows with no
+    sdr_id (unmapped HubSpot creator, awaiting manager reassignment on the
+    Form Fills page) are excluded from commission until reassigned."""
+    sdr_names_by_id = {str(sdr.id): sdr.full_name for sdr in db.query(Sdr).all()}
+    by_sdr: Dict[str, List[SdrFormFill]] = defaultdict(list)
+    rows = (
+        db.query(SdrFormFill)
+        .filter(SdrFormFill.deleted_at.is_(None))
+        .filter(SdrFormFill.fill_date >= start, SdrFormFill.fill_date <= end)
+        .all()
+    )
+    for fill in rows:
+        sdr_name = sdr_names_by_id.get(str(fill.sdr_id)) if fill.sdr_id else None
+        if not sdr_name:
+            continue
+        by_sdr[sdr_name].append(fill)
+    for fill_rows in by_sdr.values():
+        fill_rows.sort(key=lambda f: (f.fill_date or date.min, f.id))
+    return by_sdr
+
+
 def _sick_day_payload(row: CommissionSickDay) -> Dict[str, Any]:
     return {
         "id": str(row.id),
@@ -722,11 +774,18 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
     deals_by_sdr = _eligible_deals(db, start, end)
     meetings_by_sdr = _eligible_meetings(db, start, end)
     sick_days_by_sdr = _eligible_sick_days(db, start, end)
-    names = set(quotes_by_sdr)
+    form_fills_by_sdr = _eligible_form_fills(db, start, end)
+    # Seed with every active, commission-eligible SDR unconditionally (not
+    # just SDRs found in one of the activity tables above) — a manager still
+    # needs to see and record sick days/meetings/form fills for an SDR with
+    # zero samples/quotes/calls that period.
+    names = {sdr.full_name for sdr in db.query(Sdr).all() if sdr.active and _is_commission_sdr_name(sdr.full_name)}
+    names.update(quotes_by_sdr)
     names.update(sdrs_by_id[sdr_id].full_name for sdr_id in samples_by_sdr)
     names.update(deals_by_sdr)
     names.update(meetings_by_sdr)
     names.update(sick_days_by_sdr)
+    names.update(form_fills_by_sdr)
     names.update(_working_sdr_names(db, start, end))
 
     results = []
@@ -740,32 +799,40 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
         deal_rows = deals_by_sdr.get(name, [])
         meeting_rows = meetings_by_sdr.get(name, [])
         sick_day_rows = sick_days_by_sdr.get(name, [])
+        form_fill_rows = form_fills_by_sdr.get(name, [])
         sample_count = len(sample_rows)
         quote_count = len(quote_rows)
         sample_payloads = [_sample_payload(req, "created_at", 1, 1, False) for req in sample_rows]
-        quote_payloads = [_quote_payload(q, 3, 3, False) for q in quote_rows]
+        quote_payloads = []
+        for q in quote_rows:
+            rate = _quote_rate_for(q.date_requested.date() if q.date_requested else None)
+            quote_payloads.append(_quote_payload(q, rate, rate, False))
         deal_payloads = [_deal_payload(d) for d in deal_rows]
         meeting_payloads = [
             _meeting_payload(m, 0 if m.source_quote_id else 3, 0 if m.source_quote_id else 3, False)
             for m in meeting_rows
         ]
         sick_day_payloads = [_sick_day_payload(s) for s in sick_day_rows]
+        form_fill_payloads = [_form_fill_payload(f) for f in form_fill_rows]
         sample_payout = sum(item["amount"] for item in sample_payloads)
         quote_payout = sum(item["amount"] for item in quote_payloads)
         deal_payout = sum(item["amount"] for item in deal_payloads)
         meeting_payout = sum(item["amount"] for item in meeting_payloads)
-        payout = sample_payout + quote_payout + deal_payout + meeting_payout
+        form_fill_payout = sum(item["amount"] for item in form_fill_payloads)
+        payout = sample_payout + quote_payout + deal_payout + meeting_payout + form_fill_payout
         results.append({
             "sdr_id": name,
             "sdr_name": name,
             "eligible_sample_count": sample_count,
             "eligible_quote_count": quote_count,
             "eligible_meeting_count": len(meeting_payloads),
+            "eligible_form_fill_count": len(form_fill_payloads),
             "eligible_unit_count": sample_count + quote_count,
             "sample_rate": 1,
-            "quote_rate": 3,
+            "quote_rate": QUOTE_RATE,
+            "form_fill_rate": FORM_FILL_RATE,
             "base_sample_payout": round(sample_count, 2),
-            "base_quote_payout": round(quote_count * 3, 2),
+            "base_quote_payout": round(sum(item["base_amount"] for item in quote_payloads), 2),
             "base_meeting_payout": round(sum(item["base_amount"] for item in meeting_payloads), 2),
             "spiff_sample_delta": 0,
             "spiff_quote_delta": 0,
@@ -773,16 +840,18 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
             "sample_payout": round(sample_payout, 2),
             "quote_payout": round(quote_payout, 2),
             "meeting_payout": round(meeting_payout, 2),
+            "form_fill_payout": round(form_fill_payout, 2),
             "spiff_payout": 0,
             "deal_payout": round(deal_payout, 2),
             "payout_amount": round(payout, 2),
-            "reason": f"{sample_count} sample(s) x $1.00 + {quote_count} quote(s) x $3.00.",
+            "reason": f"{sample_count} sample(s) x $1.00 + {quote_count} quote(s) (rate varies by date) + {len(form_fill_payloads)} form fill(s) (rate varies by date).",
             "reached_at": None,
             "samples": sample_payloads,
             "quotes": quote_payloads,
             "deals": deal_payloads,
             "meetings": meeting_payloads,
             "sick_days": sick_day_payloads,
+            "form_fills": form_fill_payloads,
         })
 
     results.sort(key=lambda r: (-r["payout_amount"], -r["eligible_unit_count"], r["sdr_name"]))
@@ -857,6 +926,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
     deals_by_sdr = _eligible_deals(db, month_start, month_end)
     meetings_by_sdr = _eligible_meetings(db, month_start, month_end)
     sick_days_by_sdr = _eligible_sick_days(db, month_start, month_end)
+    form_fills_by_sdr = _eligible_form_fills(db, month_start, month_end)
     scoped_previews = [calculate_preview(db, rule) for rule in rules]
     spiff_bonus_by_name: Dict[str, float] = defaultdict(float)
     spiff_bonus_details_by_name: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -892,11 +962,13 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
                         "amount": round(amount, 2),
                     })
 
-    names = set(quotes_by_sdr)
+    names = {sdr.full_name for sdr in db.query(Sdr).all() if sdr.active and _is_commission_sdr_name(sdr.full_name)}
+    names.update(quotes_by_sdr)
     names.update(sdrs_by_id[sdr_id].full_name for sdr_id in samples_by_sdr)
     names.update(deals_by_sdr)
     names.update(meetings_by_sdr)
     names.update(sick_days_by_sdr)
+    names.update(form_fills_by_sdr)
     names.update(_working_sdr_names(db, month_start, month_end))
     for rule in rules:
         if rule.get("rule_type") == "threshold_bonus" and (rule.get("qualification_scope") or "individual") == "team":
@@ -915,6 +987,9 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
         meeting_rows = meetings_by_sdr.get(sdr_name, [])
         sick_day_rows = sick_days_by_sdr.get(sdr_name, [])
         sick_day_payloads = [_sick_day_payload(s) for s in sick_day_rows]
+        form_fill_rows = form_fills_by_sdr.get(sdr_name, [])
+        form_fill_payloads = [_form_fill_payload(f) for f in form_fill_rows]
+        form_fill_payout = sum(item["amount"] for item in form_fill_payloads)
 
         sample_payloads = []
         for req in sample_rows:
@@ -957,10 +1032,10 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
 
         quote_payloads = []
         for quote in quote_rows:
-            base_amount = 3.0
+            d = quote.date_requested.date() if quote.date_requested else None
+            base_amount = _quote_rate_for(d)
             amount = base_amount
             campaigns = []
-            d = quote.date_requested.date() if quote.date_requested else None
             for rule in rules:
                 entity_type = rule.get("entity_type") or "sample"
                 _, quote_rate = _rule_rates(rule)
@@ -1043,7 +1118,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
         spiff_meeting_delta = meeting_payout - base_meeting_payout
         spiff_bonus = spiff_bonus_by_name.get(sdr_name, 0)
         spiff_bonus_details = spiff_bonus_details_by_name.get(sdr_name, [])
-        payout = sample_payout + quote_payout + meeting_payout + spiff_bonus + deal_payout
+        payout = sample_payout + quote_payout + meeting_payout + spiff_bonus + deal_payout + form_fill_payout
         visible_rules = [rule for rule in rules if rule]
         results.append({
             "sdr_id": sdr_name,
@@ -1051,9 +1126,11 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             "eligible_sample_count": sample_count,
             "eligible_quote_count": quote_count,
             "eligible_meeting_count": len(meeting_payloads),
+            "eligible_form_fill_count": len(form_fill_payloads),
             "eligible_unit_count": sample_count + quote_count,
             "sample_rate": 1,
-            "quote_rate": 3,
+            "quote_rate": QUOTE_RATE,
+            "form_fill_rate": FORM_FILL_RATE,
             "base_sample_payout": round(base_sample_payout, 2),
             "base_quote_payout": round(base_quote_payout, 2),
             "base_meeting_payout": round(base_meeting_payout, 2),
@@ -1063,12 +1140,13 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             "sample_payout": round(sample_payout, 2),
             "quote_payout": round(quote_payout, 2),
             "meeting_payout": round(meeting_payout, 2),
+            "form_fill_payout": round(form_fill_payout, 2),
             "spiff_payout": round(spiff_bonus, 2),
             "spiff_bonus_details": spiff_bonus_details,
             "deal_payout": round(deal_payout, 2),
             "payout_amount": round(payout, 2),
             "reason": (
-                f"Base: {sample_count} sample(s) x $1.00 + {quote_count} quote(s) x $3.00. "
+                f"Base: {sample_count} sample(s) x $1.00 + {quote_count} quote(s) (rate varies by date). "
                 f"SPIFF adjustment: samples {'+' if spiff_sample_delta >= 0 else '-'}${abs(spiff_sample_delta):,.2f}, "
                 f"quotes {'+' if spiff_quote_delta >= 0 else '-'}${abs(spiff_quote_delta):,.2f}"
                 + (f", meetings {'+' if spiff_meeting_delta >= 0 else '-'}${abs(spiff_meeting_delta):,.2f}" if meeting_payloads else "")
@@ -1082,6 +1160,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             "deals": deal_payloads,
             "meetings": meeting_payloads,
             "sick_days": sick_day_payloads,
+            "form_fills": form_fill_payloads,
         })
 
     results.sort(key=lambda r: (-r["payout_amount"], -r["eligible_unit_count"], r["sdr_name"]))

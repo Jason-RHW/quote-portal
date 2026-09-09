@@ -18,7 +18,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Boolean, JSON, UniqueConstraint, Enum as SAEnum
+from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Boolean, JSON, UniqueConstraint, Index, Enum as SAEnum
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -402,3 +402,48 @@ class CommissionSickDay(Base):
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class SdrFormFill(Base):
+    """SDR account-research 'form fills' — one row per (company, day)
+    (see hubspot_formfill_ingest_service.py for the daily sync: a Note
+    created today on a Company whose own Last Activity Date is also today).
+    A company can generate more than one qualifying HubSpot Note the same
+    day (e.g. a webform-capture note plus a longer research note) — these
+    are merged into a single row rather than one row each, so the company
+    only counts once. Worth $5 flat in commission, like CommissionMeeting's
+    flat rate. sdr_id is nullable because a note's HubSpot creator may not
+    (yet) map to a known Sdr.hubspot_owner_id — such rows still get created
+    so a manager can reassign them on the Form Fills page rather than having
+    them silently dropped. Soft-deletable, same convention as
+    CommissionDeal/Meeting/SickDay."""
+    __tablename__ = "sdr_form_fills"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    sdr_id = Column(String, nullable=True, index=True)
+    company_name = Column(String, nullable=True)
+    company_domain = Column(String, nullable=True)
+    hubspot_company_id = Column(String, nullable=True)
+    note_text = Column(String, nullable=True)
+    fill_date = Column(Date, nullable=False, index=True)
+    source = Column(String, nullable=False, default="hubspot_sync")  # "hubspot_sync" | "manual"
+    hubspot_note_ids = Column(JSON, nullable=True)  # list[str] — every Note merged into this row
+    hubspot_creator_user_id = Column(String, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    __table_args__ = (
+        # One row per (company, day) for synced rows — the idempotency/merge
+        # key for the daily sync. Manual entries have no hubspot_company_id
+        # and are unconstrained (a manager can log the same company twice).
+        Index(
+            "uq_sdr_form_fills_company_date",
+            "hubspot_company_id",
+            "fill_date",
+            unique=True,
+            postgresql_where=hubspot_company_id.isnot(None),
+            sqlite_where=hubspot_company_id.isnot(None),
+        ),
+    )

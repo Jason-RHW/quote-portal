@@ -728,3 +728,86 @@ def sync_sample_delivered(req: SampleRequest, sdr_owner_id: Optional[str] = None
     update_company_delivered_lifecycle_stage(company_id)
     add_contact_to_delivered_list(contact_id, req.delivered_date)
     return HubSpotSyncResult(contact_id=contact_id, company_id=company_id)
+
+
+# --- Notes ingestion (read side) — everything above this point is outbound
+# only (create contact/company/note). These three support the daily "form
+# fill" sync in hubspot_formfill_ingest_service.py, which needs to read Notes
+# HubSpot's own users created, not write anything.
+
+def search_notes_created_between(start_iso: str, end_iso: str) -> list:
+    """Returns every Note (id + hs_note_body/hs_createdate/hs_created_by_user_id)
+    created in [start_iso, end_iso). hs_note_body is the full rich-text HTML
+    body (not hs_body_preview's flattened single-line summary) so paragraph/
+    line-break structure can be preserved — see
+    hubspot_formfill_ingest_service._note_html_to_text. Paginates via
+    HubSpot's `after` cursor — none of this file's other search calls need
+    to (they all just take a single page), so this is the first place that
+    loop is needed. Capped at MAX_NOTES as a sanity limit against a runaway
+    date range."""
+    MAX_NOTES = 2000
+    PAGE_SIZE = 100
+    payload_base = {
+        "filterGroups": [{
+            "filters": [
+                {"propertyName": "hs_createdate", "operator": "GTE", "value": start_iso},
+                {"propertyName": "hs_createdate", "operator": "LT", "value": end_iso},
+            ]
+        }],
+        "properties": ["hs_note_body", "hs_createdate", "hs_created_by_user_id"],
+        "limit": PAGE_SIZE,
+    }
+    results = []
+    after = None
+    while True:
+        payload = dict(payload_base)
+        if after:
+            payload["after"] = after
+        page = _request("POST", "/crm/v3/objects/notes/search", json=payload)
+        results.extend(page.get("results", []))
+        after = (page.get("paging") or {}).get("next", {}).get("after")
+        if not after or len(results) >= MAX_NOTES:
+            break
+    return results
+
+
+def _chunks(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def batch_get_note_company_ids(note_ids: list) -> dict:
+    """Resolves each note's associated company via the v4 associations batch-read
+    endpoint. A note can associate to more than one company in theory; this
+    takes the first one, which matches how notes are actually created in this
+    portal (one note, one company)."""
+    result = {}
+    for chunk in _chunks(list(dict.fromkeys(note_ids)), 100):
+        if not chunk:
+            continue
+        payload = {"inputs": [{"id": note_id} for note_id in chunk]}
+        response = _request("POST", "/crm/v4/associations/notes/companies/batch/read", json=payload)
+        for row in response.get("results", []):
+            from_id = (row.get("from") or {}).get("id")
+            to_ids = row.get("to") or []
+            if from_id and to_ids:
+                # toObjectId comes back as an int; company batch-read responses
+                # key by string id, so this must be stringified to match.
+                result[from_id] = str(to_ids[0].get("toObjectId"))
+    return result
+
+
+def batch_get_companies(company_ids, properties: list) -> dict:
+    """Batch-reads company properties by ID. Returns {company_id: {property: value}}."""
+    result = {}
+    for chunk in _chunks(list(dict.fromkeys(company_ids)), 100):
+        if not chunk:
+            continue
+        payload = {
+            "inputs": [{"id": company_id} for company_id in chunk],
+            "properties": properties,
+        }
+        response = _request("POST", "/crm/v3/objects/companies/batch/read", json=payload)
+        for row in response.get("results", []):
+            result[row["id"]] = row.get("properties", {})
+    return result
