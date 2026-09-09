@@ -33,12 +33,15 @@ remove the approximation entirely.
 from datetime import date, datetime, time, timedelta
 from typing import Optional, List, Dict, Tuple
 from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from app.models.db_models import DailySummary, SdrDailyStat, SampleRequest, Sdr, SdrFormFill
 from app.services import quote_service
 from app.services.spiff_service import EXCLUDED_COMMISSION_SDRS as EXCLUDED_SDR_NAMES
+
+PST = ZoneInfo("America/Los_Angeles")
 
 
 # ── Delta helpers ────────────────────────────────────────────────────
@@ -169,6 +172,14 @@ def _prior_range(start: date, end: date) -> Tuple[date, date]:
 # ── Available periods (drives the calendar / dropdown selectors) ───────
 def get_available_periods(db: Session):
     dates = [row[0] for row in db.query(DailySummary.report_date).order_by(DailySummary.report_date).all()]
+    # Today has no DailySummary row yet (the Aircall pipeline reports
+    # yesterday's day only once it's fully over) but form fills/samples/
+    # quotes are all live queries with real data available right now —
+    # so "today" is always selectable in the Daily view, even before
+    # tonight's pipeline run backfills its calls/connect/active-hours.
+    today_pst = datetime.now(PST).date()
+    if today_pst not in dates:
+        dates = sorted(dates + [today_pst])
     daily = [d.isoformat() for d in dates]
     weekly, monthly = [], []
     seen_weeks, seen_months = set(), set()
@@ -207,7 +218,13 @@ def _previous_working_date(db: Session, before: date) -> Optional[date]:
 def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     d = date.fromisoformat(date_str)
     summary = db.query(DailySummary).filter(DailySummary.report_date == d).first()
-    if not summary:
+    # A day genuinely has "no report" (weekend/holiday/outage) only when
+    # it's a *past* day the pipeline skipped — still a 404 for those. But
+    # today always renders, with calls/connect/active-hours at 0 until
+    # tonight's pipeline run fills them in — samples/quotes/form fills
+    # below are live queries and already have real same-day data.
+    is_today = d == datetime.now(PST).date()
+    if not summary and not is_today:
         return None
 
     stats = (
@@ -226,12 +243,13 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     form_fills_today, form_fills_total_today = _form_fills_by_sdr(db, d, d)
     form_fills_prev, form_fills_total_prev = _form_fills_by_sdr(db, prev_date, prev_date) if prev_date else ({}, 0)
 
-    team_deltas = dict(summary.deltas or {})
+    team_deltas = dict((summary.deltas or {}) if summary else {})
     team_deltas["quotes"] = _delta(quotes_total_today, quotes_total_prev) or {"dir": "flat", "pct": 0}
     team_deltas["samples"] = _delta(samples_total_today, samples_total_prev) or {"dir": "flat", "pct": 0}
     team_deltas["formFills"] = _delta(form_fills_total_today, form_fills_total_prev) or {"dir": "flat", "pct": 0}
 
-    team_convert_today = _convert_pct(samples_total_today, summary.calls)
+    team_calls = summary.calls if summary else 0
+    team_convert_today = _convert_pct(samples_total_today, team_calls)
     prev_summary = (
         db.query(DailySummary).filter(DailySummary.report_date == prev_date).first() if prev_date else None
     )
@@ -290,9 +308,13 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     sdrs.sort(key=lambda r: (-r["calls"], r["name"]))
 
     return {
+        "note": (
+            "Today's calls/connect/active hours will populate tonight once the Aircall pipeline "
+            "runs — samples, quotes, and form fills below are already live."
+        ) if not summary else None,
         "team": {
-            "calls": summary.calls, "connect": summary.connect_pct, "convert": team_convert_today,
-            "samples": samples_total_today, "activeHrs": summary.active_hrs, "quotes": quotes_total_today,
+            "calls": team_calls, "connect": summary.connect_pct if summary else 0.0, "convert": team_convert_today,
+            "samples": samples_total_today, "activeHrs": summary.active_hrs if summary else 0.0, "quotes": quotes_total_today,
             "formFills": form_fills_total_today,
             "deltas": team_deltas,
         },

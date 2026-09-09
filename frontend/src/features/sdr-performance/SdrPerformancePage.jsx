@@ -103,6 +103,7 @@ export default function SdrPerformancePage() {
 
       {status === "ready" && report && (
         <>
+          {report.note && <div className="empty-state" style={{ marginBottom: 12 }}>{report.note}</div>}
           <div className="overview-grid">
             <div className="dash-section">
               <div className="dash-section-header"><h2 className="dash-section-title">Team Calls — by SDR</h2></div>
