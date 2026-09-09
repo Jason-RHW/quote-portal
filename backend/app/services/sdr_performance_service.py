@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 
 from app.models.db_models import DailySummary, SdrDailyStat, SampleRequest, Sdr, SdrFormFill
 from app.services import quote_service
+from app.services.spiff_service import EXCLUDED_COMMISSION_SDRS as EXCLUDED_SDR_NAMES
 
 
 # ── Delta helpers ────────────────────────────────────────────────────
@@ -243,7 +244,7 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     # Commission dashboard for the same reason.
     stats_by_name = {s.sdr_name: s for s in stats}
     active_names = {sdr.full_name for sdr in db.query(Sdr).all() if sdr.active}
-    all_names = active_names | set(stats_by_name.keys())
+    all_names = (active_names | set(stats_by_name.keys())) - EXCLUDED_SDR_NAMES
 
     sdrs = []
     for name in all_names:
@@ -349,7 +350,7 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
     # Seed with every active SDR, not just ones with a calls row in range —
     # see the matching comment in get_daily_report.
     active_names = {sdr.full_name for sdr in db.query(Sdr).all() if sdr.active}
-    all_names = active_names | set(by_sdr.keys())
+    all_names = (active_names | set(by_sdr.keys())) - EXCLUDED_SDR_NAMES
 
     sdr_rows = []
     for name in all_names:
