@@ -129,8 +129,15 @@ def _samples_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, int]
 def _form_fills_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, int], int]:
     """SDR form fills (HubSpot account-research notes — see
     hubspot_formfill_ingest_service.py), attributed by fill_date, for
-    [start, end] inclusive. Same live-query pattern as _samples_by_sdr."""
-    id_to_name = {s.id: s.full_name for s in db.query(Sdr).all()}
+    [start, end] inclusive. Same live-query pattern as _samples_by_sdr.
+
+    str(...) on both sides of the lookup: production's sdrs.id is a native
+    Postgres uuid column (psycopg returns uuid.UUID), while
+    sdr_form_fills.sdr_id is a plain varchar column — comparing/hashing
+    them directly never matches, silently dropping every form fill from
+    this report. Same bug class already fixed for commission_deals/
+    commission_meetings in spiff_service.py."""
+    id_to_name = {str(s.id): s.full_name for s in db.query(Sdr).all()}
     rows = (
         db.query(SdrFormFill)
         .filter(SdrFormFill.deleted_at.is_(None))
@@ -142,7 +149,7 @@ def _form_fills_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, i
     for r in rows:
         if not r.sdr_id:
             continue
-        name = id_to_name.get(r.sdr_id)
+        name = id_to_name.get(str(r.sdr_id))
         if not name:
             continue
         counts[name] += 1
@@ -230,25 +237,37 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     team_convert_prev = _convert_pct(samples_total_prev, prev_summary.calls) if prev_summary else None
     team_deltas["convert"] = _delta_pp(team_convert_today, team_convert_prev) or {"dir": "flat", "pct": 0}
 
+    # Seed with every active SDR, not just ones stats has a row for — an
+    # active SDR with zero calls AND zero form fills that day should still
+    # get a card (all zeros), the same fix already applied to the
+    # Commission dashboard for the same reason.
+    stats_by_name = {s.sdr_name: s for s in stats}
+    active_names = {sdr.full_name for sdr in db.query(Sdr).all() if sdr.active}
+    all_names = active_names | set(stats_by_name.keys())
+
     sdrs = []
-    for s in stats:
-        sdr_deltas = s.deltas or {}
-        q_today = quotes_today.get(s.sdr_name, 0)
-        q_prev = quotes_prev.get(s.sdr_name, 0)
-        smp_today = samples_today.get(s.sdr_name, 0)
-        smp_prev = samples_prev.get(s.sdr_name, 0)
-        convert_today = _convert_pct(smp_today, s.calls)
+    for name in all_names:
+        s = stats_by_name.get(name)
+        sdr_deltas = (s.deltas or {}) if s else {}
+        calls = s.calls if s else 0
+        q_today = quotes_today.get(name, 0)
+        q_prev = quotes_prev.get(name, 0)
+        smp_today = samples_today.get(name, 0)
+        smp_prev = samples_prev.get(name, 0)
+        convert_today = _convert_pct(smp_today, calls)
         prev_stat = None
         if prev_date:
             prev_stat = db.query(SdrDailyStat).filter(
-                SdrDailyStat.report_date == prev_date, SdrDailyStat.sdr_name == s.sdr_name
+                SdrDailyStat.report_date == prev_date, SdrDailyStat.sdr_name == name
             ).first()
         convert_prev = _convert_pct(smp_prev, prev_stat.calls) if prev_stat else None
         sdrs.append({
-            "name": s.sdr_name,
-            "calls": s.calls,
+            "name": name,
+            "calls": calls,
             "mix": {
-                "connected": s.connected_pct, "voicemail": s.voicemail_pct, "other": s.other_pct,
+                "connected": s.connected_pct if s else 0.0,
+                "voicemail": s.voicemail_pct if s else 0.0,
+                "other": s.other_pct if s else 0.0,
                 "connectedDelta": sdr_deltas.get("connected"),
                 "voicemailDelta": sdr_deltas.get("voicemail"),
                 "otherDelta": sdr_deltas.get("other"),
@@ -257,16 +276,17 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
             "convert": {"v": convert_today, "delta": _delta_pp(convert_today, convert_prev)},
             "quotes": {"v": q_today, "delta": _delta(q_today, q_prev)},
             "formFills": {
-                "v": form_fills_today.get(s.sdr_name, 0),
-                "delta": _delta(form_fills_today.get(s.sdr_name, 0), form_fills_prev.get(s.sdr_name, 0)),
+                "v": form_fills_today.get(name, 0),
+                "delta": _delta(form_fills_today.get(name, 0), form_fills_prev.get(name, 0)),
             },
             "clock": {
                 "timeLabel": _format_span_label(s.span_start, s.span_end),
                 "start": s.span_start, "end": s.span_end,
                 "idle": _idle_indices(s.active_chunks),
                 "activeHrs": s.active_hrs, "idleHrs": s.idle_hrs,
-            } if s.span_start is not None else None,
+            } if s and s.span_start is not None else None,
         })
+    sdrs.sort(key=lambda r: (-r["calls"], r["name"]))
 
     return {
         "team": {
@@ -326,16 +346,22 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
     for s in stats:
         by_sdr[s.sdr_name].append(s)
 
+    # Seed with every active SDR, not just ones with a calls row in range —
+    # see the matching comment in get_daily_report.
+    active_names = {sdr.full_name for sdr in db.query(Sdr).all() if sdr.active}
+    all_names = active_names | set(by_sdr.keys())
+
     sdr_rows = []
-    for name, rows in by_sdr.items():
+    for name in all_names:
+        rows = by_sdr.get(name, [])
         calls = sum(r.calls for r in rows)
         connected = _weighted_avg([(r.connected_pct, r.calls) for r in rows])
         voicemail = _weighted_avg([(r.voicemail_pct, r.calls) for r in rows])
         other = max(0.0, 100 - connected - voicemail)
         sdr_samples = samples_by_sdr.get(name, 0)
         convert = _convert_pct(sdr_samples, calls)
-        active_hrs = sum(r.active_hrs for r in rows) / len(rows)
-        idle_hrs = sum(r.idle_hrs for r in rows) / len(rows)
+        active_hrs = (sum(r.active_hrs for r in rows) / len(rows)) if rows else 0.0
+        idle_hrs = (sum(r.idle_hrs for r in rows) / len(rows)) if rows else 0.0
         sdr_rows.append({
             "name": name, "calls": calls,
             "mix": {"connected": round(connected, 1), "voicemail": round(voicemail, 1), "other": round(other, 1)},
@@ -345,7 +371,7 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
             "formFills": {"v": form_fills_by_sdr.get(name, 0), "delta": None},
             "span8": {"active": round(active_hrs, 1), "idle": round(idle_hrs, 1)},
         })
-    sdr_rows.sort(key=lambda r: r["calls"], reverse=True)
+    sdr_rows.sort(key=lambda r: (-r["calls"], r["name"]))
 
     prior_start, prior_end = _prior_range(start, end)
     prior_summaries = db.query(DailySummary).filter(DailySummary.report_date.between(prior_start, prior_end)).all()
