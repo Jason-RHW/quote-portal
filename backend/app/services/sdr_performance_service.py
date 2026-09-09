@@ -36,7 +36,7 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
-from app.models.db_models import DailySummary, SdrDailyStat, SampleRequest, Sdr
+from app.models.db_models import DailySummary, SdrDailyStat, SampleRequest, Sdr, SdrFormFill
 from app.services import quote_service
 
 
@@ -126,6 +126,30 @@ def _samples_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, int]
     return dict(counts), total
 
 
+def _form_fills_by_sdr(db: Session, start: date, end: date) -> Tuple[Dict[str, int], int]:
+    """SDR form fills (HubSpot account-research notes — see
+    hubspot_formfill_ingest_service.py), attributed by fill_date, for
+    [start, end] inclusive. Same live-query pattern as _samples_by_sdr."""
+    id_to_name = {s.id: s.full_name for s in db.query(Sdr).all()}
+    rows = (
+        db.query(SdrFormFill)
+        .filter(SdrFormFill.deleted_at.is_(None))
+        .filter(SdrFormFill.fill_date >= start, SdrFormFill.fill_date <= end)
+        .all()
+    )
+    counts: Dict[str, int] = defaultdict(int)
+    total = 0
+    for r in rows:
+        if not r.sdr_id:
+            continue
+        name = id_to_name.get(r.sdr_id)
+        if not name:
+            continue
+        counts[name] += 1
+        total += 1
+    return dict(counts), total
+
+
 def _prior_range(start: date, end: date) -> Tuple[date, date]:
     """The immediately preceding period of the same length, for deltas."""
     span = (end - start).days + 1
@@ -191,10 +215,13 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
     quotes_prev, quotes_total_prev = _quotes_by_sdr(db, prev_date, prev_date) if prev_date else ({}, 0)
     samples_today, samples_total_today = _samples_by_sdr(db, d, d)
     samples_prev, samples_total_prev = _samples_by_sdr(db, prev_date, prev_date) if prev_date else ({}, 0)
+    form_fills_today, form_fills_total_today = _form_fills_by_sdr(db, d, d)
+    form_fills_prev, form_fills_total_prev = _form_fills_by_sdr(db, prev_date, prev_date) if prev_date else ({}, 0)
 
     team_deltas = dict(summary.deltas or {})
     team_deltas["quotes"] = _delta(quotes_total_today, quotes_total_prev) or {"dir": "flat", "pct": 0}
     team_deltas["samples"] = _delta(samples_total_today, samples_total_prev) or {"dir": "flat", "pct": 0}
+    team_deltas["formFills"] = _delta(form_fills_total_today, form_fills_total_prev) or {"dir": "flat", "pct": 0}
 
     team_convert_today = _convert_pct(samples_total_today, summary.calls)
     prev_summary = (
@@ -229,6 +256,10 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
             "samples": {"v": smp_today, "delta": _delta(smp_today, smp_prev)},
             "convert": {"v": convert_today, "delta": _delta_pp(convert_today, convert_prev)},
             "quotes": {"v": q_today, "delta": _delta(q_today, q_prev)},
+            "formFills": {
+                "v": form_fills_today.get(s.sdr_name, 0),
+                "delta": _delta(form_fills_today.get(s.sdr_name, 0), form_fills_prev.get(s.sdr_name, 0)),
+            },
             "clock": {
                 "timeLabel": _format_span_label(s.span_start, s.span_end),
                 "start": s.span_start, "end": s.span_end,
@@ -241,6 +272,7 @@ def get_daily_report(db: Session, date_str: str) -> Optional[dict]:
         "team": {
             "calls": summary.calls, "connect": summary.connect_pct, "convert": team_convert_today,
             "samples": samples_total_today, "activeHrs": summary.active_hrs, "quotes": quotes_total_today,
+            "formFills": form_fills_total_today,
             "deltas": team_deltas,
         },
         "sdrs": sdrs,
@@ -287,6 +319,7 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
 
     quotes_by_sdr, quotes_total = _quotes_by_sdr(db, start, end)
     samples_by_sdr, samples_total = _samples_by_sdr(db, start, end)
+    form_fills_by_sdr, form_fills_total = _form_fills_by_sdr(db, start, end)
     team_convert = _convert_pct(samples_total, team_calls)
 
     by_sdr: Dict[str, List[SdrDailyStat]] = defaultdict(list)
@@ -309,6 +342,7 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
             "samples": {"v": sdr_samples, "delta": None},
             "convert": {"v": convert, "delta": None},
             "quotes": {"v": quotes_by_sdr.get(name, 0), "delta": None},
+            "formFills": {"v": form_fills_by_sdr.get(name, 0), "delta": None},
             "span8": {"active": round(active_hrs, 1), "idle": round(idle_hrs, 1)},
         })
     sdr_rows.sort(key=lambda r: r["calls"], reverse=True)
@@ -317,6 +351,7 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
     prior_summaries = db.query(DailySummary).filter(DailySummary.report_date.between(prior_start, prior_end)).all()
     _, prior_quotes_total = _quotes_by_sdr(db, prior_start, prior_end)
     _, prior_samples_total = _samples_by_sdr(db, prior_start, prior_end)
+    _, prior_form_fills_total = _form_fills_by_sdr(db, prior_start, prior_end)
     prior_calls = sum(s.calls for s in prior_summaries) if prior_summaries else None
     prior_connect = _weighted_avg([(s.connect_pct, s.calls) for s in prior_summaries]) if prior_summaries else None
     prior_convert = _convert_pct(prior_samples_total, prior_calls) if prior_calls else None
@@ -329,12 +364,14 @@ def _aggregate_range(db: Session, start: date, end: date) -> Optional[dict]:
         "samples": _delta(samples_total, prior_samples_total) or {"dir": "flat", "pct": 0},
         "activeHrs": _delta(team_active_hrs, prior_active) or {"dir": "flat", "pct": 0},
         "quotes": _delta(quotes_total, prior_quotes_total) or {"dir": "flat", "pct": 0},
+        "formFills": _delta(form_fills_total, prior_form_fills_total) or {"dir": "flat", "pct": 0},
     }
 
     return {
         "team": {
             "calls": team_calls, "connect": round(team_connect, 1), "convert": team_convert,
             "samples": samples_total, "activeHrs": round(team_active_hrs, 1), "quotes": quotes_total,
+            "formFills": form_fills_total,
             "deltas": team_deltas,
         },
         "sdrs": sdr_rows,

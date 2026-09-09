@@ -10,6 +10,7 @@ const KPI_DEFS = [
   { key: "connect",   label: "Avg Connect",  fmt: (v) => `${v}%` },
   { key: "convert",   label: "Avg Convert",  fmt: (v) => `${v}%` },
   { key: "samples",   label: "Samples Sent", fmt: (v) => v },
+  { key: "formFills", label: "Form Fills",   fmt: (v) => v },
   { key: "activeHrs", label: "Avg Active Hrs", fmt: (v) => v },
 ];
 

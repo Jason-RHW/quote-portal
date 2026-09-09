@@ -97,6 +97,11 @@ export default function SdrCard({ sdr, index, granularity }) {
           <div className="l">Quotes</div>
           <DeltaBox delta={sdr.quotes.delta} />
         </div>
+        <div className="stat-box">
+          <div className="v" style={{ color: "var(--sdr-1)" }}>{sdr.formFills.v}</div>
+          <div className="l">Form Fills</div>
+          <DeltaBox delta={sdr.formFills.delta} />
+        </div>
       </div>
     </div>
   );

@@ -250,6 +250,7 @@ class TeamKpiOut(BaseModel):
     samples: int
     activeHrs: float
     quotes: int
+    formFills: int
     deltas: Dict[str, DeltaOut]
 
 
@@ -288,6 +289,7 @@ class SdrRowOut(BaseModel):
     samples: StatWithDelta
     convert: StatWithDelta
     quotes: StatWithDelta
+    formFills: StatWithDelta
     clock: Optional[SdrClockOut] = None   # present for daily
     span8: Optional[SdrSpan8Out] = None   # present for weekly/monthly
 
