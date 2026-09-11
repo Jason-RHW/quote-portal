@@ -575,6 +575,10 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
       - Meeting Detail: Date / Business Name / Source (Quote-Linked or
         Manual) / Amount — Amount is already the final, rule-aware number
         from the report, same as Sample/Quote Detail's plain amounts.
+      - Form Fills Detail: Date / Business Name / Source (Synced or Manual)
+        / Amount — Amount is already the final, date-aware rate per record
+        (see spiff_service._form_fill_rate_for), same pattern as Meeting
+        Detail.
       - Sick Days: Start Date / End Date / Reason Note, no dollar figure —
         record-keeping only, not part of any payout math.
     """
@@ -587,6 +591,13 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
 
     wb = Workbook()
     wb.remove(wb.active)
+    # Every numeric cell here is a formula, not a literal — openpyxl never
+    # writes a cached result, so without this, some viewers (anything that
+    # reads stored values instead of running Excel's calc engine — e.g. a
+    # quick preview pane) render every formula cell blank, which on this
+    # sheet is nearly the whole workbook. Forces a full recalculation the
+    # moment the file is opened in a real spreadsheet app.
+    wb.calculation.fullCalcOnLoad = True
 
     sample_counts, sample_id_col = _add_plain_list_sheet(wb, "Sample Detail", results, "samples")
     quote_counts, quote_id_col = _add_plain_list_sheet(
@@ -612,6 +623,18 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
         money_cols={4}, subtotal_col=4,
     )
 
+    # Amount is already the final, date-aware rate per record (see
+    # spiff_service._form_fill_rate_for — $5/fill before 2026-08-25, $1/fill
+    # after), so this is a cross-sheet subtotal reference like Meeting/Deal,
+    # not a count*single-rate formula — a flat rate would be wrong for any
+    # month straddling that change, same reasoning as the Quote $ caveat.
+    form_fill_subtotals = _add_grouped_sheet(
+        wb, "Form Fills Detail", results, "form_fills",
+        ["Date", "Business Name", "Source", "Amount"],
+        lambda f: [f.get("date"), f.get("business_name"), "Synced" if f.get("source") == "hubspot_sync" else "Manual", f.get("amount")],
+        money_cols={4}, subtotal_col=4,
+    )
+
     _add_sick_days_sheet(wb, results)
 
     # ── Summary ──
@@ -619,10 +642,10 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
     ws.append(["SDR Commission Summary — " + month])
     ws["A1"].font = Font(bold=True, size=14)
     ws.append([])
-    headers = ["SDR Name", "Samples", "Sample $", "Quotes", "Quote $", "Meeting $", "SPIFF", "Deal Commission $", "Total Payout"]
+    headers = ["SDR Name", "Samples", "Sample $", "Quotes", "Quote $", "Form Fills $", "Meeting $", "SPIFF", "Deal Commission $", "Total Payout"]
     ws.append(headers)
     _style_header_row(ws, 3, len(headers))
-    money_col_idxs = {3, 5, 6, 7, 8, 9}
+    money_col_idxs = {3, 5, 6, 7, 8, 9, 10}
     widths = defaultdict(int)
     for col, label in enumerate(headers, start=1):
         _set_col_width(widths, col, label)
@@ -652,10 +675,11 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
 
         ws.cell(row=row_idx, column=3, value=f"=B{row_idx}*$M$1")
         ws.cell(row=row_idx, column=5, value=f"=D{row_idx}*$M$2")
-        ws.cell(row=row_idx, column=6, value=f"={meeting_subtotals[sdr]}")
-        ws.cell(row=row_idx, column=7, value=f"={spiff_subtotals[sdr]}")
-        ws.cell(row=row_idx, column=8, value=f"={deal_subtotals[sdr]}")
-        ws.cell(row=row_idx, column=9, value=f"=C{row_idx}+E{row_idx}+F{row_idx}+G{row_idx}+H{row_idx}")
+        ws.cell(row=row_idx, column=6, value=f"={form_fill_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=7, value=f"={meeting_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=8, value=f"={spiff_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=9, value=f"={deal_subtotals[sdr]}")
+        ws.cell(row=row_idx, column=10, value=f"=C{row_idx}+E{row_idx}+F{row_idx}+G{row_idx}+H{row_idx}+I{row_idx}")
 
         for col in range(1, len(headers) + 1):
             cell = ws.cell(row=row_idx, column=col)
@@ -666,13 +690,14 @@ def build_commission_workbook(db: Session, month: str) -> Workbook:
         spiff_total = (r["sample_payout"] - r["eligible_sample_count"] * SAMPLE_BASE_RATE) \
             + (r["quote_payout"] - r["eligible_quote_count"] * QUOTE_BASE_RATE) + r["spiff_payout"]
         meeting_total = r.get("meeting_payout", 0)
+        form_fill_total = r.get("form_fill_payout", 0)
         display_row = [
             sdr, r["eligible_sample_count"], r["eligible_sample_count"] * SAMPLE_BASE_RATE,
             r["eligible_quote_count"], r["eligible_quote_count"] * QUOTE_BASE_RATE,
-            meeting_total, spiff_total,
+            form_fill_total, meeting_total, spiff_total,
             r.get("deal_payout", 0),
             r["eligible_sample_count"] * SAMPLE_BASE_RATE + r["eligible_quote_count"] * QUOTE_BASE_RATE
-            + meeting_total + spiff_total + r.get("deal_payout", 0),
+            + form_fill_total + meeting_total + spiff_total + r.get("deal_payout", 0),
         ]
         for col, val in enumerate(display_row, start=1):
             fmt = MONEY_FMT if col in money_col_idxs else None
