@@ -9,6 +9,11 @@ research. A note counts only when ALL of these are true:
      workflow is scoped to — "Researching" or "Outreach Active" — so notes
      logged on companies elsewhere in the pipeline (e.g. already a customer,
      or a sample already sent) don't count as a "form fill".
+  4. The Note has a real human creator (hs_created_by_user_id is set). Notes
+     with no creator are written by an API/integration, not a person doing
+     research — e.g. this app's own outbound HubSpot sync logs a "Sample
+     Project Batch #… Sample Sent: <SKU>" note when a sample ships, which is
+     record-keeping, not SDR work, and should never count as a form fill.
 
 A single company can generate more than one qualifying Note the same day
 (e.g. a webform-capture note plus a longer research note) — these are
@@ -91,6 +96,7 @@ def ingest_day(db: Session, target_date: date) -> dict:
     skipped_no_company = 0
     skipped_stale_activity = 0
     skipped_wrong_stage = 0
+    skipped_no_creator = 0
 
     # Group every qualifying note by company — this is the merge step.
     eligible_by_company: dict[str, list[dict]] = defaultdict(list)
@@ -109,6 +115,10 @@ def ingest_day(db: Session, target_date: date) -> dict:
 
         if company.get("lifecyclestage") not in ELIGIBLE_LIFECYCLE_STAGES:
             skipped_wrong_stage += 1
+            continue
+
+        if not note.get("properties", {}).get("hs_created_by_user_id"):
+            skipped_no_creator += 1
             continue
 
         eligible_by_company[company_id].append(note)
@@ -167,5 +177,6 @@ def ingest_day(db: Session, target_date: date) -> dict:
         "skipped_no_company": skipped_no_company,
         "skipped_stale_activity": skipped_stale_activity,
         "skipped_wrong_stage": skipped_wrong_stage,
+        "skipped_no_creator": skipped_no_creator,
         "unmapped_sdr": unmapped_sdr,
     }
