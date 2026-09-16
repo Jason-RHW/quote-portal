@@ -35,7 +35,16 @@ def _quote_rate_for(d: Optional[date]) -> float:
     return QUOTE_RATE if d and d >= RATE_CHANGE_DATE else LEGACY_QUOTE_RATE
 
 
-def _form_fill_rate_for(d: Optional[date]) -> float:
+def _form_fill_rate_for(d: Optional[date], outreach_status: Optional[str] = None) -> float:
+    # outreach_status is only set for rows synced from the structured
+    # Email/Web Form/Status template SDRs started using 2026-09-11 — a
+    # DQ'd lead or one where the email was never sent doesn't earn the
+    # commission rate even though it's still shown on the Form Fills page.
+    # Rows without this column set (pre-template, or manual entries) are
+    # unaffected — always paid at the date-based rate, same as before.
+    from app.services.hubspot_formfill_ingest_service import QUALIFYING_OUTREACH_STATUSES
+    if outreach_status is not None and outreach_status not in QUALIFYING_OUTREACH_STATUSES:
+        return 0.0
     return FORM_FILL_RATE if d and d >= RATE_CHANGE_DATE else LEGACY_FORM_FILL_RATE
 
 
@@ -614,7 +623,8 @@ def _form_fill_payload(row: SdrFormFill) -> Dict[str, Any]:
         "business_name": row.company_name,
         "date": row.fill_date.isoformat() if row.fill_date else None,
         "source": row.source,
-        "amount": round(_form_fill_rate_for(row.fill_date), 2),
+        "outreach_status": row.outreach_status,
+        "amount": round(_form_fill_rate_for(row.fill_date, row.outreach_status), 2),
     }
 
 
@@ -826,7 +836,10 @@ def _base_commission_report(db: Session, start: date, end: date, name: str) -> D
             "eligible_sample_count": sample_count,
             "eligible_quote_count": quote_count,
             "eligible_meeting_count": len(meeting_payloads),
-            "eligible_form_fill_count": len(form_fill_payloads),
+            # Count of $-earning form fills only — the Form Fills page shows
+            # every row (including DQ'd/no-email-sent ones); this count is
+            # about commission, so it only counts ones that actually paid.
+            "eligible_form_fill_count": sum(1 for item in form_fill_payloads if item["amount"] > 0),
             "eligible_unit_count": sample_count + quote_count,
             "sample_rate": 1,
             "quote_rate": QUOTE_RATE,
@@ -1126,7 +1139,7 @@ def apply_rules_to_month(db: Session, month: str, rules: List[Dict[str, Any]]) -
             "eligible_sample_count": sample_count,
             "eligible_quote_count": quote_count,
             "eligible_meeting_count": len(meeting_payloads),
-            "eligible_form_fill_count": len(form_fill_payloads),
+            "eligible_form_fill_count": sum(1 for item in form_fill_payloads if item["amount"] > 0),
             "eligible_unit_count": sample_count + quote_count,
             "sample_rate": 1,
             "quote_rate": QUOTE_RATE,

@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { api } from "../../api/client";
 import ConfirmModal from "../samples/ConfirmModal";
+import { statusBadgeClass } from "./FormFillsPage";
 import "../../components/shared.css";
 import "../samples/samples.css";
 import "./formfills.css";
+
+const OUTREACH_STATUS_OPTIONS = ["Email + Webform", "Email", "Webform", "To Call", "DQ"];
 
 function fmtDate(iso) {
   if (!iso) return "";
@@ -15,16 +18,26 @@ function websiteUrl(domain) {
   return domain.startsWith("http") ? domain : `https://${domain}`;
 }
 
-function creatorName(fill, allSdrs) {
-  if (!fill.hubspot_creator_user_id) return "—";
-  // hs_created_by_user_id lands in the same ID space as HubSpot's owner ID
-  // (confirmed against the portal's live Owners API) — same value already
-  // stored per-SDR in Sdr.hubspot_owner_id, set up in Settings.
-  const match = (allSdrs || []).find(s => s.hubspot_owner_id === fill.hubspot_creator_user_id);
-  return match ? match.full_name : fill.hubspot_creator_user_id;
+// Pulls the Email:/Web Form:/Status:/Notes-Reason: lines back out of the
+// stored plain-text note for display as its own small section — same
+// template SDRs started using 2026-09-11 (see hubspot_formfill_ingest_service
+// on the backend, which parses this the same way to derive outreach_status).
+function parseOutreachNote(noteText) {
+  if (!noteText) return null;
+  const emailMatch = noteText.match(/^\s*Email\s*:\s*(.+)$/im);
+  const webFormMatch = noteText.match(/^\s*Web Form\s*:\s*(.+)$/im);
+  const statusMatch = noteText.match(/^\s*Status\s*:\s*(.+)$/im);
+  const reasonMatch = noteText.match(/^\s*Notes\/Reason\s*:\s*([\s\S]+?)(?:\n\n———|\n\n[A-Za-z]|$)/im);
+  if (!emailMatch && !statusMatch) return null;
+  return {
+    email: emailMatch ? emailMatch[1].trim() : null,
+    webForm: webFormMatch ? webFormMatch[1].trim() : null,
+    status: statusMatch ? statusMatch[1].trim() : null,
+    reason: reasonMatch ? reasonMatch[1].trim() : null,
+  };
 }
 
-export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onChanged }) {
+export default function FormFillDetailDrawer({ fill, sdrs, onClose, onChanged }) {
   const [sdrId, setSdrId] = useState(fill.sdr_id || "");
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -36,6 +49,7 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
     company_name: fill.company_name || "",
     company_domain: fill.company_domain || "",
     note_text: fill.note_text || "",
+    outreach_status: fill.outreach_status || "",
     fill_date: fill.fill_date || "",
   });
 
@@ -57,6 +71,7 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
       company_name: fill.company_name || "",
       company_domain: fill.company_domain || "",
       note_text: fill.note_text || "",
+      outreach_status: fill.outreach_status || "",
       fill_date: fill.fill_date || "",
     });
     setEditMode(true);
@@ -81,6 +96,7 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
         company_name: editForm.company_name.trim(),
         company_domain: editForm.company_domain.trim() || null,
         note_text: editForm.note_text,
+        outreach_status: editForm.outreach_status || null,
         fill_date: editForm.fill_date,
       });
       setEditMode(false);
@@ -107,6 +123,7 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
   }
 
   const url = websiteUrl(fill.company_domain);
+  const outreach = parseOutreachNote(fill.note_text);
 
   return (
     <>
@@ -116,7 +133,8 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
           <div>
             <p className="drawer-title">{fill.company_name || "Untitled"}</p>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {fmtDate(fill.fill_date)} · <span className={`status-badge ${fill.source === "manual" ? "hold" : "hs-tracking-synced"}`}>{fill.source === "manual" ? "Manual" : "Synced"}</span>
+              {fmtDate(fill.fill_date)}
+              {fill.outreach_status && <> · <span className={`status-badge ${statusBadgeClass(fill.outreach_status)}`}>{fill.outreach_status}</span></>}
             </div>
           </div>
           <button className="drawer-close" onClick={onClose}>×</button>
@@ -130,6 +148,13 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
                 <div className="form-field"><label>Company name</label><input value={editForm.company_name} onChange={e => setEditField("company_name", e.target.value)} /></div>
                 <div className="form-field"><label>Website / domain</label><input value={editForm.company_domain} onChange={e => setEditField("company_domain", e.target.value)} /></div>
                 <div className="form-field"><label>Date</label><input type="date" value={editForm.fill_date} onChange={e => setEditField("fill_date", e.target.value)} /></div>
+                <div className="form-field">
+                  <label>Status</label>
+                  <select value={editForm.outreach_status} onChange={e => setEditField("outreach_status", e.target.value)}>
+                    <option value="">— None —</option>
+                    {OUTREACH_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
               </div>
             ) : (
               <div className="drawer-kv">
@@ -152,6 +177,18 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
             </div>
           </div>
 
+          {outreach && !editMode && (
+            <div className="drawer-block">
+              <h4>Outreach</h4>
+              <div className="drawer-kv">
+                <div className="k">Email</div><div>{outreach.email || "—"}</div>
+                <div className="k">Web Form</div><div>{outreach.webForm || "—"}</div>
+                <div className="k">Status</div><div>{outreach.status || "—"}</div>
+                <div className="k">Reason</div><div>{outreach.reason || "—"}</div>
+              </div>
+            </div>
+          )}
+
           <div className="drawer-block">
             <h4>Note</h4>
             {editMode ? (
@@ -168,15 +205,6 @@ export default function FormFillDetailDrawer({ fill, sdrs, allSdrs, onClose, onC
             )}
           </div>
 
-          <div className="drawer-block">
-            <h4>Sync details</h4>
-            <div className="drawer-kv">
-              <div className="k">Source</div><div>{fill.source === "manual" ? "Manually added" : "HubSpot sync"}</div>
-              <div className="k">HubSpot Note ID{(fill.hubspot_note_ids || []).length > 1 ? "s" : ""}</div>
-              <div>{(fill.hubspot_note_ids || []).length ? fill.hubspot_note_ids.join(", ") : "—"}</div>
-              <div className="k">Note creator</div><div>{creatorName(fill, allSdrs)}</div>
-            </div>
-          </div>
         </div>
 
         <div className="drawer-footer">

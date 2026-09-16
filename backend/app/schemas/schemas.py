@@ -601,6 +601,8 @@ class FormFillOut(BaseModel):
     company_domain: Optional[str] = None
     hubspot_company_id: Optional[str] = None
     note_text: Optional[str] = None
+    outreach_status: Optional[str] = None
+    lifecycle_stage: Optional[str] = None
     fill_date: date
     source: str
     hubspot_note_ids: Optional[List[str]] = None
@@ -627,4 +629,5 @@ class FormFillUpdate(BaseModel):
     sdr_id: Optional[str] = None
     company_name: Optional[str] = None
     note_text: Optional[str] = None
+    outreach_status: Optional[str] = None
     fill_date: Optional[date] = None

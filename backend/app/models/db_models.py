@@ -425,6 +425,18 @@ class SdrFormFill(Base):
     company_domain = Column(String, nullable=True)
     hubspot_company_id = Column(String, nullable=True)
     note_text = Column(String, nullable=True)
+    # Canonical bucket parsed from the SDR's structured outreach note (see
+    # hubspot_formfill_ingest_service._canonical_outreach_status) — one of
+    # "Email + Webform", "Email", "Webform", "To Call", "DQ". Null for rows
+    # synced before SDRs started using this template (2026-09-11) or for
+    # manual entries — those are commission-eligible unconditionally, same
+    # as before this column existed.
+    outreach_status = Column(String, nullable=True, index=True)
+    # Company's current HubSpot lifecycle-stage label (e.g. "Researching",
+    # "Disqualified Lead") — set at sync time, then refreshed live on every
+    # Form Fills page load (see hubspot_formfill_ingest_service.
+    # refresh_lifecycle_stages) so it reflects HubSpot in near-real time.
+    lifecycle_stage = Column(String, nullable=True)
     fill_date = Column(Date, nullable=False, index=True)
     source = Column(String, nullable=False, default="hubspot_sync")  # "hubspot_sync" | "manual"
     hubspot_note_ids = Column(JSON, nullable=True)  # list[str] — every Note merged into this row

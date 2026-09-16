@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import DateFilterCalendar from "../samples/DateFilterCalendar";
+import FilterDropdown from "../../components/FilterDropdown";
 import FormFillDetailDrawer from "./FormFillDetailDrawer";
 import "../../components/shared.css";
 import "../samples/samples.css";
 import "./formfills.css";
 
 const PAGE_SIZE = 50;
+
+const STATUS_BADGE_CLASS = {
+  "Email + Webform": "of-email-webform",
+  "Email": "of-email",
+  "Webform": "of-webform",
+  "To Call": "of-to-call",
+  "DQ": "of-dq",
+};
+
+export function statusBadgeClass(status) {
+  return STATUS_BADGE_CLASS[status] || "hs-pending";
+}
 
 function isoLocal(date) {
   return [
@@ -21,8 +34,9 @@ function daysAgo(dateStr) {
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
-function SourceBadge({ source }) {
-  return <span className={`status-badge ${source === "manual" ? "hold" : "hs-tracking-synced"}`}>{source === "manual" ? "Manual" : "Synced"}</span>;
+function StatusBadge({ status }) {
+  if (!status) return <span className="status-badge hs-pending">—</span>;
+  return <span className={`status-badge ${statusBadgeClass(status)}`}>{status}</span>;
 }
 
 export default function FormFillsPage() {
@@ -33,7 +47,9 @@ export default function FormFillsPage() {
 
   const [dateFilter, setDateFilter] = useState(null);
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
-  const [dateOpen, setDateOpen] = useState(false);
+  const [sdrFilter, setSdrFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [openFilter, setOpenFilter] = useState(null);
   const [search, setSearch] = useState("");
   const [dateSort, setDateSort] = useState("desc");
   const [page, setPage] = useState(1);
@@ -66,13 +82,24 @@ export default function FormFillsPage() {
     const id = window.setInterval(() => reload({ silent: true }), 30000);
     return () => window.clearInterval(id);
   }, [reload]);
-  useEffect(() => { setPage(1); }, [dateFilter, dateRange.from, dateRange.to, search]);
+  useEffect(() => { setPage(1); }, [dateFilter, dateRange.from, dateRange.to, sdrFilter, statusFilter, search]);
+
+  const recordedStatusOptions = useMemo(() => {
+    return [...new Set(fills.map(f => f.outreach_status).filter(Boolean))].sort();
+  }, [fills]);
+  const recordedSdrOptions = useMemo(() => {
+    return [...new Set(fills.map(f => (sdrsById[f.sdr_id]?.full_name || "").trim()).filter(Boolean))].sort();
+  }, [fills, sdrsById]);
+  const sdrOptions = [{ value: "", label: "All SDRs" }, ...recordedSdrOptions.map(name => ({ value: name, label: name }))];
+  const statusOptions = [{ value: "", label: "All statuses" }, ...recordedStatusOptions.map(s => ({ value: s, label: s }))];
 
   const visible = useMemo(() => {
     let list = fills;
     if (dateFilter) list = list.filter(f => f.fill_date === dateFilter);
     if (dateRange.from) list = list.filter(f => f.fill_date >= dateRange.from);
     if (dateRange.to) list = list.filter(f => f.fill_date <= dateRange.to);
+    if (sdrFilter) list = list.filter(f => (sdrsById[f.sdr_id]?.full_name || "").trim() === sdrFilter);
+    if (statusFilter) list = list.filter(f => f.outreach_status === statusFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(f => (f.company_name || "").toLowerCase().includes(q));
@@ -83,7 +110,7 @@ export default function FormFillsPage() {
       if (dateDiff !== 0) return dateDiff;
       return String(a.id).localeCompare(String(b.id)) * direction;
     });
-  }, [fills, dateFilter, dateRange.from, dateRange.to, search, dateSort]);
+  }, [fills, dateFilter, dateRange.from, dateRange.to, sdrFilter, statusFilter, sdrsById, search, dateSort]);
 
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -106,7 +133,7 @@ export default function FormFillsPage() {
       <div className="page-header">
         <div>
           <p className="page-title">Form Fills</p>
-          <p className="page-sub">SDR account-research notes synced daily from HubSpot — $5 each toward commission.</p>
+          <p className="page-sub">SDR outreach notes synced daily from HubSpot — only Email + Webform / Email statuses earn commission.</p>
         </div>
         <div className="page-header-actions">
           <button className="btn-primary" onClick={() => setShowAddModal(true)}>+ Add Form Fill</button>
@@ -132,6 +159,8 @@ export default function FormFillsPage() {
 
       <div className="data-card">
         <div className="toolbar">
+          <FilterDropdown value={sdrFilter} options={sdrOptions} open={openFilter === "sdr"} onOpenChange={open => setOpenFilter(open ? "sdr" : null)} onChange={setSdrFilter} />
+          <FilterDropdown value={statusFilter} options={statusOptions} open={openFilter === "status"} onOpenChange={open => setOpenFilter(open ? "status" : null)} onChange={setStatusFilter} />
           <DateFilterCalendar
             dataDates={dataDates}
             selectedDate={dateFilter}
@@ -139,8 +168,8 @@ export default function FormFillsPage() {
             onSelect={setDateFilter}
             onRangeChange={setDateRange}
             onClear={() => { setDateFilter(null); setDateRange({ from: "", to: "" }); }}
-            isOpen={dateOpen}
-            onOpenChange={setDateOpen}
+            isOpen={openFilter === "date"}
+            onOpenChange={open => setOpenFilter(open ? "date" : null)}
           />
           <div className="search-wrap">
             <input placeholder="Search company..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -158,6 +187,8 @@ export default function FormFillsPage() {
                 <tr>
                   <th>SDR</th>
                   <th>Company</th>
+                  <th>Status</th>
+                  <th>Lifecycle Stage</th>
                   <th>
                     <button
                       type="button"
@@ -169,7 +200,6 @@ export default function FormFillsPage() {
                       <span className="date-sort-arrow" aria-hidden="true" />
                     </button>
                   </th>
-                  <th>Source</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,11 +212,12 @@ export default function FormFillsPage() {
                         {f.company_name || "—"}
                         <div className="biz-sub">{f.company_domain || ""}</div>
                       </td>
+                      <td><StatusBadge status={f.outreach_status} /></td>
+                      <td>{f.lifecycle_stage || "—"}</td>
                       <td>
                         {new Date(f.fill_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         <div className="age-tag">{age === 0 ? "today" : `${age}d ago`}</div>
                       </td>
-                      <td><SourceBadge source={f.source} /></td>
                     </tr>
                   );
                 })}
@@ -214,7 +245,6 @@ export default function FormFillsPage() {
         <FormFillDetailDrawer
           fill={openFill}
           sdrs={activeSdrs}
-          allSdrs={sdrs}
           onClose={() => setOpenId(null)}
           onChanged={reload}
         />

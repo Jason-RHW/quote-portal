@@ -89,6 +89,16 @@ def run(engine: Engine) -> None:
         "ALTER TABLE sample_requests ADD COLUMN tracking_checked_at TIMESTAMP",
         "ALTER TABLE sample_requests ADD COLUMN IF NOT EXISTS tracking_checked_at TIMESTAMP",
     )
+    _add_column_if_missing(
+        engine, "sdr_form_fills", "outreach_status",
+        "ALTER TABLE sdr_form_fills ADD COLUMN outreach_status VARCHAR",
+        "ALTER TABLE sdr_form_fills ADD COLUMN IF NOT EXISTS outreach_status VARCHAR",
+    )
+    _add_column_if_missing(
+        engine, "sdr_form_fills", "lifecycle_stage",
+        "ALTER TABLE sdr_form_fills ADD COLUMN lifecycle_stage VARCHAR",
+        "ALTER TABLE sdr_form_fills ADD COLUMN IF NOT EXISTS lifecycle_stage VARCHAR",
+    )
 
     if not is_sqlite:
         # quotes.status was created as a native Postgres ENUM type by

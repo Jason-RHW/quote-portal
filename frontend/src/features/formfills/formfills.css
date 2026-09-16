@@ -1,3 +1,12 @@
 .drawer.form-fill-detail-drawer { width: 560px; max-width: min(95vw, 560px); }
+
+/* Outreach status badges — Email + Webform/Email/Webform are green, darkest
+   to lightest in that order (all three "got somewhere" outcomes); To Call is
+   blue (pending action); DQ is red (dead end). */
+.status-badge.of-email-webform { background: #A7F3D0; color: #065F46; }
+.status-badge.of-email         { background: #D1FAE5; color: #047857; }
+.status-badge.of-webform       { background: #ECFDF5; color: #059669; }
+.status-badge.of-to-call       { background: #DBEAFE; color: #1D4ED8; }
+.status-badge.of-dq            { background: #FEF2F2; color: #B91C1C; }
 .form-fill-note-full { white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: var(--text-primary); background: var(--surface-subtle); border: 0.5px solid var(--border); border-radius: 6px; padding: 12px; max-height: 320px; overflow-y: auto; }
 .form-fill-note-edit { width: 100%; min-height: 260px; padding: 10px 12px; border: 0.5px solid #CBD5E1; border-radius: 6px; font-size: 13px; line-height: 1.5; font-family: inherit; white-space: pre-wrap; resize: vertical; }

@@ -26,7 +26,18 @@ def list_form_fills(
         query = query.filter(SdrFormFill.fill_date <= end_date)
     if sdr_id:
         query = query.filter(SdrFormFill.sdr_id == sdr_id)
-    return query.order_by(SdrFormFill.fill_date.desc(), SdrFormFill.created_at.desc()).all()
+    rows = query.order_by(SdrFormFill.fill_date.desc(), SdrFormFill.created_at.desc()).all()
+
+    # Live-refresh each visible row's lifecycle stage from HubSpot so the
+    # column reflects a stage change (e.g. later disqualified) without
+    # waiting for the next day's cron sync.
+    from app.services import hubspot_formfill_ingest_service
+    try:
+        hubspot_formfill_ingest_service.refresh_lifecycle_stages(db, rows)
+    except Exception:
+        pass  # best-effort — a HubSpot hiccup shouldn't break the page
+
+    return rows
 
 
 def create_form_fill(db: Session, data: dict, created_by: Optional[str] = None) -> SdrFormFill:
@@ -66,6 +77,8 @@ def update_form_fill(db: Session, form_fill_id: str, data: dict) -> Optional[Sdr
         row.company_name = data["company_name"].strip()
     if "note_text" in data:
         row.note_text = data["note_text"]
+    if "outreach_status" in data:
+        row.outreach_status = data["outreach_status"]
     if "fill_date" in data and data["fill_date"] is not None:
         row.fill_date = data["fill_date"]
     db.commit()
